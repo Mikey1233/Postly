@@ -1,0 +1,30 @@
+<svg width="100%" viewBox="0 0 680 400" role="img" xmlns="http://www.w3.org/2000/svg" style="">
+  <title style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Postly logo</title>
+  <desc style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Postly app logo featuring a lightning bolt icon in purple with the wordmark "Postly" in dark text</desc>
+
+  <defs>
+    
+  </defs>
+
+  <!-- Icon mark -->
+  <g transform="translate(170, 110)" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">
+    <!-- Rounded square background -->
+    <rect x="0" y="0" width="88" height="88" rx="22" fill="#EDE9FF" style="fill:rgb(45, 40, 96);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+    <!-- Lightning bolt -->
+    <polygon points="54,10 32,46 50,46 34,78 62,38 44,38" fill="#7C3AED" style="fill:rgb(124, 58, 237);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="278" y="171" font-size="68" fill="#1A1040" style="fill:rgb(240, 239, 254);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:-apple-system, &quot;Helvetica Neue&quot;, sans-serif;font-size:68px;font-weight:700;text-anchor:start;dominant-baseline:auto">Postly</text>
+
+  <!-- Dot accent on the "y" — small purple circle -->
+  <circle cx="497" cy="148" r="6" fill="#7C3AED" style="fill:rgb(124, 58, 237);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- Tagline -->
+  <text x="278" y="205" font-size="16" fill="#7C6FB0" letter-spacing="2" style="fill:rgb(157, 151, 216);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:-apple-system, &quot;Helvetica Neue&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">YOUR VOICE. EVERY PLATFORM.</text>
+
+  <!-- Divider line -->
+  <line x1="278" y1="220" x2="540" y2="220" stroke="#7C3AED" stroke-width="2" stroke-linecap="round" opacity="0.3" style="fill:rgb(0, 0, 0);stroke:rgb(124, 58, 237);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:round;stroke-linejoin:miter;opacity:0.3;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+</svg>

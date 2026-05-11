@@ -31,7 +31,7 @@ Postly is a personal productivity tool built for one person. No sign-ups, no oth
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18 + Vite, Zustand, TailwindCSS |
+| Frontend | React 18 + Vite + TypeScript, Zustand, TailwindCSS |
 | Backend | Node.js + Express |
 | Database | Supabase (PostgreSQL) |
 | File Storage | Supabase Storage |
