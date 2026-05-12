@@ -1,7 +1,30 @@
 const supabase = require('./supabase');
 
 module.exports = {
-  async create(data) { throw new Error('db.carousels.create not yet implemented'); },
-  async getById(id) { throw new Error('db.carousels.getById not yet implemented'); },
-  async update(id, data) { throw new Error('db.carousels.update not yet implemented'); },
+  async create(data) {
+    const { data: carousel, error } = await supabase
+      .from('carousels').insert(data).select().single();
+    if (error) throw error;
+    return carousel;
+  },
+
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('carousels').select('*').eq('id', id).single();
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id, data) {
+    const { data: carousel, error } = await supabase
+      .from('carousels').update({ ...data, updated_at: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (error) throw error;
+    return carousel;
+  },
+
+  async remove(id) {
+    const { error } = await supabase.from('carousels').delete().eq('id', id);
+    if (error) throw error;
+  },
 };

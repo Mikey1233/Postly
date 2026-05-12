@@ -24,4 +24,9 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  if (process.env.DISABLE_SCHEDULER !== 'true') {
+    require('./services/scheduler/cron').startScheduler();
+  }
+});

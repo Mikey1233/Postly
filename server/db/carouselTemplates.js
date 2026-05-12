@@ -1,6 +1,31 @@
 const supabase = require('./supabase');
 
 module.exports = {
-  async getAll() { throw new Error('db.carouselTemplates.getAll not yet implemented'); },
-  async create(data) { throw new Error('db.carouselTemplates.create not yet implemented'); },
+  async getAll() {
+    const { data, error } = await supabase
+      .from('carousel_templates').select('*')
+      .order('is_builtin', { ascending: false })
+      .order('created_at');
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('carousel_templates').select('*').eq('id', id).single();
+    if (error) throw error;
+    return data;
+  },
+
+  async create(data) {
+    const { data: template, error } = await supabase
+      .from('carousel_templates').insert(data).select().single();
+    if (error) throw error;
+    return template;
+  },
+
+  async remove(id) {
+    const { error } = await supabase.from('carousel_templates').delete().eq('id', id);
+    if (error) throw error;
+  },
 };

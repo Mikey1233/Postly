@@ -50,3 +50,38 @@ export function getLimit<K extends keyof PlatformLimit>(
 ): PlatformLimit[K] | null {
   return PLATFORM_LIMITS[platform]?.[key] ?? null
 }
+
+export function validateMediaForPlatforms(
+  files: { size: number; type: string }[],
+  platforms: Platform[],
+): string[] {
+  const warnings: string[] = []
+  for (const platform of platforms) {
+    const lim = PLATFORM_LIMITS[platform]
+    const images = files.filter((f) => f.type.startsWith('image/'))
+    const videos = files.filter((f) => f.type.startsWith('video/'))
+    if (images.length > lim.maxImages) {
+      warnings.push(`${platform}: max ${lim.maxImages} images (you have ${images.length})`)
+    }
+    for (const v of videos) {
+      if (v.size > lim.maxVideoSizeBytes) {
+        warnings.push(`${platform}: video exceeds ${Math.round(lim.maxVideoSizeBytes / 1024 / 1024)}MB limit`)
+      }
+    }
+  }
+  return warnings
+}
+
+export const PLATFORM_COLORS: Record<Platform, string> = {
+  linkedin: '#0A66C2',
+  x: '#000000',
+  facebook: '#1877F2',
+  reddit: '#FF4500',
+}
+
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  linkedin: 'LinkedIn',
+  x: 'X',
+  facebook: 'Facebook',
+  reddit: 'Reddit',
+}

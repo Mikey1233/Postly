@@ -4,8 +4,119 @@
   box-sizing: border-box;
 }
 
+/* ── Gradient Buttons ────────────────────────────────────────────────────── */
+
+/* Primary: indigo → violet */
+.btn-gradient {
+  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.25);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.btn-gradient:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5 0%, #6d28d9 100%);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.38);
+  transform: translateY(-1px);
+}
+.btn-gradient:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.2);
+}
+.btn-gradient:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Blue: for LinkedIn / platform-specific actions */
+.btn-gradient-blue {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  box-shadow: 0 1px 3px rgba(29, 78, 216, 0.25);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.btn-gradient-blue:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.38);
+  transform: translateY(-1px);
+}
+.btn-gradient-blue:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-gradient-blue:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Secondary outlined — subtle white-to-gray gradient */
+.btn-gradient-outline {
+  background: linear-gradient(to bottom, #ffffff 0%, #f3f4f6 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.btn-gradient-outline:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #f9fafb 0%, #e5e7eb 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+.btn-gradient-outline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Indigo outlined — for secondary actions like Schedule, Generate PDF */
+.btn-gradient-indigo-outline {
+  background: linear-gradient(to bottom, #eef2ff 0%, #e0e7ff 100%);
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.1);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+.btn-gradient-indigo-outline:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #e0e7ff 0%, #c7d2fe 100%);
+  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.2);
+  transform: translateY(-1px);
+}
+.btn-gradient-indigo-outline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', system-ui, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Slim scrollbar (sidebar / scrollable panels) ────────────────────────── */
+
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.25) transparent;
+}
+.scrollbar-slim::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.18);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+.scrollbar-slim:hover::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.35);
+}
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.55);
+}
+.scrollbar-slim::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Hide scrollbar entirely while keeping scroll behaviour */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }

@@ -6,7 +6,8 @@ const media         = require('./media');
 const carousels     = require('./carousels');
 const carouselTemplates = require('./carouselTemplates');
 const voiceProfiles = require('./voiceProfiles');
-const platformConnections = require('./platformConnections');
+const platformConnections  = require('./platformConnections');
+const platformCredentials  = require('./platformCredentials');
 const postAnalytics = require('./postAnalytics');
 const aiSessions    = require('./aiSessions');
 const platformGroups = require('./platformGroups');
@@ -20,6 +21,7 @@ module.exports = {
   carouselTemplates,
   voiceProfiles,
   platformConnections,
+  platformCredentials,
   postAnalytics,
   aiSessions,
   platformGroups,

@@ -1,8 +1,32 @@
 const supabase = require('./supabase');
 
 module.exports = {
-  async getAll() { throw new Error('db.platformConnections.getAll not yet implemented'); },
-  async getByPlatform(platform) { throw new Error('db.platformConnections.getByPlatform not yet implemented'); },
-  async upsert(platform, data) { throw new Error('db.platformConnections.upsert not yet implemented'); },
-  async remove(platform) { throw new Error('db.platformConnections.remove not yet implemented'); },
+  async getAll() {
+    const { data, error } = await supabase
+      .from('platform_connections').select('*').order('platform');
+    if (error) throw error;
+    return data;
+  },
+
+  async getByPlatform(platform) {
+    const { data, error } = await supabase
+      .from('platform_connections').select('*').eq('platform', platform).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async upsert(platform, data) {
+    const { data: conn, error } = await supabase
+      .from('platform_connections')
+      .upsert({ platform, ...data }, { onConflict: 'platform' })
+      .select().single();
+    if (error) throw error;
+    return conn;
+  },
+
+  async remove(platform) {
+    const { error } = await supabase
+      .from('platform_connections').delete().eq('platform', platform);
+    if (error) throw error;
+  },
 };
