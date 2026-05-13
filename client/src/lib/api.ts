@@ -1,11 +1,29 @@
 import axios from 'axios'
+import useAppStore from '../store/useAppStore'
 
 export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
+// In development all requests go through the Vite proxy (/api/* → localhost:3001)
+// so the session cookie is always same-origin. In production VITE_API_URL is the
+// Railway/Render URL; withCredentials lets the browser send the httpOnly cookie
+// cross-origin (works when the server returns Access-Control-Allow-Credentials).
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL:         import.meta.env.DEV ? '' : BASE_URL,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// Redirect to /login whenever any API call gets a 401 (session expired or never set)
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      useAppStore.getState().setAuth({ authenticated: false })
+      window.location.replace('/login')
+    }
+    return Promise.reject(err)
+  },
+)
 
 export default api
 
@@ -20,6 +38,7 @@ export async function streamSSE(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    credentials: 'include',
     signal,
   })
   if (!res.ok) throw new Error(`API error ${res.status}`)

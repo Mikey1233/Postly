@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../lib/api'
-import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
 import type { Platform } from '../lib/platformLimits'
 import PlatformIcon from '../components/ui/PlatformIcon'
@@ -17,9 +16,8 @@ const GROUP_PLATFORMS: { platform: Platform; label: string }[] = [
 export default function Groups() {
   const navigate  = useNavigate()
   const setCurrentPost = useAppStore((s) => s.setCurrentPost)
-  const [groups, setGroups]     = useState<Partial<Record<Platform, Group[]>>>({})
-  const [syncing, setSyncing]   = useState<Platform | null>(null)
-  const [loading, setLoading]   = useState(true)
+  const [groups, setGroups]   = useState<Partial<Record<Platform, Group[]>>>({})
+  const [syncing, setSyncing] = useState<Platform | null>(null)
 
   const sync = async (platform: Platform) => {
     setSyncing(platform)
@@ -34,10 +32,6 @@ export default function Groups() {
       setSyncing(null)
     }
   }
-
-  useEffect(() => {
-    setLoading(false)
-  }, [])
 
   const composeForGroup = (group: Group) => {
     setCurrentPost({ platforms: [group.platform], targetGroup: { platform: group.platform, groupId: group.group_id, groupName: group.name } })

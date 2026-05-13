@@ -180,30 +180,43 @@ Track your progress through the Postly build. Update this file as you complete s
 ---
 
 ### Stage 7: Polish & Power Features
-- [ ] Keyboard shortcuts (`useKeyboardShortcuts` hook) — Ctrl+N, Ctrl+S, Ctrl+Enter, Tab, Escape, etc.
-- [ ] Dark mode toggle + OS-aware default (`useDarkMode` hook)
-- [ ] Token expiry warning banner (7-day ahead alert)
-- [ ] Post scoring UI in Composer
-- [ ] Hook generator UI
-- [ ] Repurpose engine UI
-- [ ] Content pillars tagging in Composer
-- [ ] Post history search (full-text + filter)
-- [ ] Data export (JSON/CSV)
+- [x] Keyboard shortcuts (`useKeyboardShortcuts` hook) — Ctrl+N new post, Ctrl+Shift+C carousel, Ctrl+Shift+A focus AI, Ctrl+Shift+D dark mode, Ctrl+S save, Ctrl+Enter publish
+- [x] Dark mode toggle + OS-aware default (`useDarkMode` hook) — reads `prefers-color-scheme`, persists to localStorage
+- [x] Token expiry warning banner (7-day ahead alert) — `ExpiringTokensBanner` in Dashboard + OS notification via `notifications.ts`
+- [x] Post scoring UI in Composer — auto-scores after 1.5s idle, `ScoreBar` component, 4 dimensions
+- [x] Hook generator UI — "Hooks" toolbar button → modal with 5 hook types, click to prepend to post
+- [x] Repurpose engine UI — "Repurpose" toolbar button → modal with X Thread / Reddit / Long-form format picker, streams result, Copy + Use as Post actions
+- [x] Content pillars tagging in Composer — pill buttons below platform chips, stored in `currentPost.pillarId`
+- [x] Post history search (full-text + filter) — search input + platform dropdown + post-type dropdown in Analytics, debounced re-fetch with query params
+- [x] Data export (JSON/CSV) — wired in Settings; fetches history, generates blob, triggers browser download
 - [x] `client/src/components/ui/PlatformIcon.tsx` — shared component rendering brand SVGs (linkedin, round-facebook, sharp-reddit, x-solid) by platform key
 - [x] Brand-icon rollout — `Platforms.tsx` (replaced first-letter circle), `Dashboard.tsx` (replaced color dot), `Composer.tsx` (chips with active-state invert), `VoiceSetup.tsx` (tabs), `Settings.tsx` (Brand Voice list), `Groups.tsx` (section headers)
 - [x] `client/src/index.css` — `.scrollbar-slim` (indigo-tinted 6px) + `.scrollbar-none` (hide entirely, keep scroll) utilities for WebKit + Firefox
 - [x] Sidebar UX — `SidebarToggleIcon` SVG (panel-with-chevron, flips on `collapsed`), `.scrollbar-none` applied to sidebar, app logo hidden in collapsed state (only toggle button shows)
+- [x] `client/src/lib/notifications.ts` — browser Notification API helpers: `requestNotificationPermission`, `notifyPostPublished`, `notifyPostFailed`, `notifyTokenExpiringSoon`
+- [x] `App.tsx` — polls `/api/posts/recent` every 30s for status transitions; fires OS notifications; keyboard shortcut data-* hooks; dark mode applied at root
+- [x] TypeScript typecheck: 0 errors
 
-**Status: In progress**
+**Status: Completed**
 
 ---
 
 ### Stage 8: Authentication Layer
-- [ ] Single-user password login
-- [ ] JWT session cookie
-- [ ] Protected routes (server middleware + client guard)
+- [x] `bcryptjs`, `jsonwebtoken`, `cookie-parser` installed on server
+- [x] `server/middleware/authUtils.js` — `verifyPassword` (bcrypt), `signToken` / `verifyToken` (JWT), `setSessionCookie` / `clearSessionCookie` helpers
+- [x] `server/middleware/requireAuth.js` — reads `postly_session` httpOnly cookie, verifies JWT, passes 401 on failure
+- [x] `server/routes/auth.js` — `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/verify`
+- [x] `server/index.js` — `cookie-parser` added, CORS updated with `credentials: true`, `/api/auth` public, all other `/api/*` routes protected by `requireAuth`
+- [x] `client/src/pages/Login.tsx` — dark centered password form, calls `/api/auth/login`, redirects to `/` on success
+- [x] `useAppStore.ts` — `auth: { checked, authenticated }` state + `setAuth()` action added
+- [x] `client/src/App.tsx` — `RequireAuth` guard component, `/login` route (public), session verify `useEffect` on mount, logout button in sidebar footer
+- [x] `client/src/lib/api.ts` — axios `withCredentials: true`, dev-mode proxy routing (`baseURL: ''`), 401 interceptor redirects to `/login`; `streamSSE` uses `credentials: 'include'`
+- [x] `server/.env.example` — `AUTH_PASSWORD_HASH`, `JWT_SECRET`, `SESSION_DURATION_HOURS` documented with generation commands
+- [x] TypeScript typecheck: 0 errors; `node --check` clean on all server files
 
-**Status: Not started**
+**Note:** Live auth requires `AUTH_PASSWORD_HASH` and `JWT_SECRET` set in the server environment.
+
+**Status: Completed (code) — requires env vars in Railway/Render dashboard to activate**
 
 ---
 

@@ -1,8 +1,56 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (Tailwind v4) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
+
+/* ── Dark-mode token mapping ──────────────────────────────────────────────
+   Maps the gray-50/100/200/.../900 + white/black tokens used throughout the
+   codebase to a darker palette when html.dark is active. This avoids having
+   to add dark: variants on every utility class. Components that need a
+   different treatment can still opt out with explicit dark:bg-... classes. */
+
+.dark { color-scheme: dark; }
+.dark body { background-color: #0b0f1a; color: #e5e7eb; }
+
+.dark .bg-white      { background-color: #111827; }
+.dark .bg-gray-50    { background-color: #0b0f1a; }
+.dark .bg-gray-100   { background-color: #1f2937; }
+.dark .bg-gray-200   { background-color: #374151; }
+.dark .bg-indigo-50  { background-color: #1e1b4b; }
+.dark .bg-amber-50   { background-color: #422006; }
+.dark .bg-blue-50    { background-color: #172554; }
+.dark .bg-green-50   { background-color: #052e16; }
+.dark .bg-red-50     { background-color: #450a0a; }
+
+.dark .border-gray-100 { border-color: #1f2937; }
+.dark .border-gray-200 { border-color: #1f2937; }
+.dark .border-gray-300 { border-color: #374151; }
+.dark .border-indigo-200 { border-color: #3730a3; }
+.dark .border-amber-200  { border-color: #92400e; }
+
+.dark .text-gray-900 { color: #f3f4f6; }
+.dark .text-gray-800 { color: #e5e7eb; }
+.dark .text-gray-700 { color: #d1d5db; }
+.dark .text-gray-600 { color: #9ca3af; }
+.dark .text-gray-500 { color: #9ca3af; }
+.dark .text-gray-400 { color: #6b7280; }
+.dark .text-gray-300 { color: #4b5563; }
+
+.dark .hover\:bg-gray-50:hover  { background-color: #1f2937; }
+.dark .hover\:bg-gray-100:hover { background-color: #374151; }
+.dark .hover\:bg-indigo-100:hover { background-color: #312e81; }
+
+/* Inputs / textareas in dark mode */
+.dark input, .dark textarea, .dark select {
+  background-color: #1f2937;
+  color: #e5e7eb;
+  border-color: #374151;
+}
+.dark input::placeholder, .dark textarea::placeholder { color: #6b7280; }
 
 /* ── Gradient Buttons ────────────────────────────────────────────────────── */
 

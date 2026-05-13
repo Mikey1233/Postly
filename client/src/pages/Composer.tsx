@@ -13,6 +13,7 @@ const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
 
 interface ScoreData { hookStrength: number; clarity: number; structure: number; predictedEngagement: number; suggestions: string[] }
 interface AIMessage { role: 'user' | 'assistant'; content: string }
+interface HookData { type: string; hook: string }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
@@ -33,35 +34,48 @@ export default function Composer() {
   const autocompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { currentPost, setPostContent, togglePlatform, addMediaAsset, removeMediaAsset,
-    reorderMediaAssets, setCurrentPost, resetComposer, selectedModel, setSelectedModel,
-    postScore, setPostScore } = useAppStore(
+  const {
+    currentPost, setPostContent, togglePlatform, addMediaAsset, removeMediaAsset,
+    setCurrentPost, resetComposer, selectedModel, setSelectedModel,
+    postScore, setPostScore, contentPillars,
+  } = useAppStore(
     useShallow((s) => ({
-      currentPost: s.currentPost,
-      setPostContent: s.setPostContent,
-      togglePlatform: s.togglePlatform,
-      addMediaAsset: s.addMediaAsset,
+      currentPost:      s.currentPost,
+      setPostContent:   s.setPostContent,
+      togglePlatform:   s.togglePlatform,
+      addMediaAsset:    s.addMediaAsset,
       removeMediaAsset: s.removeMediaAsset,
-      reorderMediaAssets: s.reorderMediaAssets,
-      setCurrentPost: s.setCurrentPost,
-      resetComposer: s.resetComposer,
-      selectedModel: s.selectedModel,
+      setCurrentPost:   s.setCurrentPost,
+      resetComposer:    s.resetComposer,
+      selectedModel:    s.selectedModel,
       setSelectedModel: s.setSelectedModel,
-      postScore: s.postScore,
-      setPostScore: s.setPostScore,
+      postScore:        s.postScore,
+      setPostScore:     s.setPostScore,
+      contentPillars:   s.contentPillars,
     }))
   )
 
-  const [models, setModels]           = useState<{ id: string; name: string }[]>([])
-  const [ghostText, setGhostText]     = useState('')
-  const [aiMessages, setAIMessages]   = useState<AIMessage[]>([])
-  const [aiInput, setAIInput]         = useState('')
-  const [aiLoading, setAILoading]     = useState(false)
-  const [saving, setSaving]           = useState(false)
-  const [scheduling, setScheduling]   = useState(false)
-  const [posting, setPosting]         = useState(false)
+  const [models, setModels]         = useState<{ id: string; name: string }[]>([])
+  const [ghostText, setGhostText]   = useState('')
+  const [aiMessages, setAIMessages] = useState<AIMessage[]>([])
+  const [aiInput, setAIInput]       = useState('')
+  const [aiLoading, setAILoading]   = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [scheduling, setScheduling] = useState(false)
+  const [posting, setPosting]       = useState(false)
   const [scheduleModal, setScheduleModal] = useState(false)
   const [scheduleDate, setScheduleDate]   = useState('')
+
+  // Hook generator
+  const [hooksModal, setHooksModal]     = useState(false)
+  const [hooks, setHooks]               = useState<HookData[]>([])
+  const [hooksLoading, setHooksLoading] = useState(false)
+
+  // Repurpose engine
+  const [repurposeModal, setRepurposeModal]     = useState(false)
+  const [repurposeFormat, setRepurposeFormat]   = useState<'x-thread' | 'reddit' | 'longform'>('x-thread')
+  const [repurposeResult, setRepurposeResult]   = useState('')
+  const [repurposeLoading, setRepurposeLoading] = useState(false)
 
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
@@ -76,10 +90,9 @@ export default function Composer() {
 
   const triggerAutocomplete = useCallback((text: string) => {
     if (autocompleteTimer.current) clearTimeout(autocompleteTimer.current)
-    if (autocompleteCtrl.current) { autocompleteCtrl.current.abort() }
+    if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
     setGhostText('')
     if (text.length < 20) return
-
     autocompleteTimer.current = setTimeout(async () => {
       autocompleteCtrl.current = new AbortController()
       try {
@@ -121,7 +134,7 @@ export default function Composer() {
       setGhostText('')
       if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
     }
-    if (e.key === 'Escape') { setGhostText('') }
+    if (e.key === 'Escape') setGhostText('')
   }
 
   const sendAIMessage = async () => {
@@ -140,8 +153,8 @@ export default function Composer() {
           setAIMessages((prev) => {
             const msgs = [...prev]
             const last = msgs[msgs.length - 1]
-            if (last?.role === 'assistant') { msgs[msgs.length - 1] = { role: 'assistant', content: response } }
-            else { msgs.push({ role: 'assistant', content: response }) }
+            if (last?.role === 'assistant') msgs[msgs.length - 1] = { role: 'assistant', content: response }
+            else msgs.push({ role: 'assistant', content: response })
             return msgs
           })
         },
@@ -159,16 +172,51 @@ export default function Composer() {
     if (!currentPost.content) { toast.error('Write a post first'); return }
     try {
       const { data } = await api.post('/api/ai/hashtags', { content: currentPost.content, platform: currentPost.platforms[0] })
-      const tags: string[] = data.hashtags
-      setPostContent(currentPost.content + '\n\n' + tags.join(' '))
+      setPostContent(currentPost.content + '\n\n' + (data.hashtags as string[]).join(' '))
       toast.success('Hashtags added')
     } catch { toast.error('Failed to generate hashtags') }
+  }
+
+  const generateHooks = async () => {
+    if (!currentPost.content.trim()) { toast.error('Write some content first'); return }
+    setHooks([])
+    setHooksLoading(true)
+    setHooksModal(true)
+    try {
+      const { data } = await api.post('/api/ai/hooks', { content: currentPost.content, platform: currentPost.platforms[0] || 'linkedin' })
+      setHooks(data.hooks || [])
+    } catch { toast.error('Failed to generate hooks') }
+    finally { setHooksLoading(false) }
+  }
+
+  const useHook = (hook: string) => {
+    setPostContent(hook + '\n\n' + currentPost.content)
+    setHooksModal(false)
+    toast.success('Hook added')
+  }
+
+  const generateRepurpose = async () => {
+    if (!currentPost.content.trim()) { toast.error('Write some content first'); return }
+    setRepurposeLoading(true)
+    setRepurposeResult('')
+    try {
+      let result = ''
+      await streamSSE(
+        '/api/ai/repurpose',
+        { content: currentPost.content, format: repurposeFormat, platform: currentPost.platforms[0] || 'linkedin', model: selectedModel },
+        (chunk) => { result += chunk; setRepurposeResult(result) },
+      )
+    } catch { toast.error('Failed to repurpose') }
+    finally { setRepurposeLoading(false) }
   }
 
   const saveDraft = async () => {
     setSaving(true)
     try {
-      const { data } = await api.post('/api/posts', { content: currentPost.content, platform: currentPost.platforms, status: 'draft', post_type: currentPost.postType })
+      const { data } = await api.post('/api/posts', {
+        content: currentPost.content, platform: currentPost.platforms,
+        status: 'draft', post_type: currentPost.postType,
+      })
       setCurrentPost({ id: data.id })
       toast.success('Draft saved')
     } catch { toast.error('Failed to save draft') }
@@ -179,8 +227,12 @@ export default function Composer() {
     if (!scheduleDate) { toast.error('Pick a date and time'); return }
     setScheduling(true)
     try {
-      const postData = { content: currentPost.content, platform: currentPost.platforms, status: 'scheduled', scheduled_at: new Date(scheduleDate).toISOString(), post_type: currentPost.postType }
-      if (currentPost.id) { await api.put(`/api/posts/${currentPost.id}`, postData) }
+      const postData = {
+        content: currentPost.content, platform: currentPost.platforms,
+        status: 'scheduled', scheduled_at: new Date(scheduleDate).toISOString(),
+        post_type: currentPost.postType,
+      }
+      if (currentPost.id) await api.put(`/api/posts/${currentPost.id}`, postData)
       else { const { data } = await api.post('/api/posts', postData); setCurrentPost({ id: data.id }) }
       toast.success('Post scheduled')
       setScheduleModal(false)
@@ -189,7 +241,7 @@ export default function Composer() {
   }
 
   const postNow = async () => {
-    if (!currentPost.id) { await saveDraft() }
+    if (!currentPost.id) await saveDraft()
     if (!confirm('Post now to all selected platforms?')) return
     setPosting(true)
     try {
@@ -203,10 +255,11 @@ export default function Composer() {
 
   return (
     <div className="flex flex-col h-screen">
-      {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left — Editor */}
+
+        {/* ── Left — Editor ─────────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-y-auto p-5 gap-4 border-r border-gray-200">
+
           {/* Platform chips */}
           <div className="flex gap-2 flex-wrap">
             {ALL_PLATFORMS.map((p) => {
@@ -215,7 +268,9 @@ export default function Composer() {
                 <button
                   key={p}
                   onClick={() => togglePlatform(p)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${active ? 'text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                    active ? 'text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
                   style={active ? { backgroundColor: PLATFORM_COLORS[p], borderColor: PLATFORM_COLORS[p] } : {}}
                 >
                   <PlatformIcon platform={p} size={14} className={active ? 'brightness-0 invert' : ''} />
@@ -224,6 +279,32 @@ export default function Composer() {
               )
             })}
           </div>
+
+          {/* Content pillar tags */}
+          {contentPillars.length > 0 && (
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-xs text-gray-400 shrink-0">Pillar:</span>
+              {contentPillars.map((pillar) => {
+                const active = currentPost.pillarId === pillar.id
+                return (
+                  <button
+                    key={pillar.id}
+                    onClick={() => setCurrentPost({ pillarId: active ? null : pillar.id })}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                      active ? 'text-white border-transparent' : 'text-gray-500 border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                    style={active ? { backgroundColor: pillar.color, borderColor: pillar.color } : {}}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: active ? 'rgba(255,255,255,0.8)' : pillar.color }}
+                    />
+                    {pillar.name}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* Textarea */}
           <div className="relative">
@@ -262,7 +343,7 @@ export default function Composer() {
             </div>
           )}
 
-          {/* Media upload */}
+          {/* Media */}
           <div>
             <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Media</p>
             <MediaUploadZone
@@ -277,29 +358,29 @@ export default function Composer() {
           {/* Toolbar */}
           <div className="flex gap-2 flex-wrap">
             {[
-              { label: 'Hashtags', onClick: generateHashtags },
-              { label: 'Score ↺', onClick: () => scheduleScore(currentPost.content) },
+              { label: 'Hashtags',   onClick: generateHashtags },
+              { label: 'Score ↺',   onClick: () => scheduleScore(currentPost.content) },
+              { label: 'Hooks',      onClick: generateHooks },
+              { label: 'Repurpose',  onClick: () => setRepurposeModal(true) },
               { label: 'Carousel ↗', onClick: () => navigate('/compose/carousel') },
             ].map(({ label, onClick }) => (
-              <button key={label} onClick={onClick} className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50">
+              <button key={label} onClick={onClick}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50">
                 {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Right — AI Panel */}
+        {/* ── Right — AI Panel ──────────────────────────────────────────────── */}
         <div className="w-80 shrink-0 flex flex-col p-5 gap-4 overflow-y-auto bg-gray-50">
-          {/* Model + Voice */}
-          <div className="flex flex-col gap-2">
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            >
-              {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          >
+            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
 
           {/* Chat messages */}
           <div className="flex-1 space-y-3 min-h-0">
@@ -317,9 +398,10 @@ export default function Composer() {
             {aiLoading && <div className="text-xs text-gray-400 animate-pulse">AI is writing…</div>}
           </div>
 
-          {/* AI input */}
+          {/* AI input — data-ai-input lets Ctrl+Shift+A focus this from anywhere */}
           <div className="flex gap-2">
             <input
+              data-ai-input
               value={aiInput}
               onChange={(e) => setAIInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage() } }}
@@ -349,20 +431,25 @@ export default function Composer() {
         </div>
       </div>
 
-      {/* Bottom bar */}
+      {/* ── Bottom bar ──────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-5 py-3 bg-white border-t border-gray-200">
-        <button onClick={saveDraft} disabled={saving} className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60">
+        {/* data-shortcut lets Ctrl+S trigger save from useKeyboardShortcuts */}
+        <button data-shortcut="save" onClick={saveDraft} disabled={saving}
+          className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60">
           {saving ? 'Saving…' : 'Save Draft'}
         </button>
-        <button onClick={() => setScheduleModal(true)} className="btn-gradient-indigo-outline border border-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
+        <button onClick={() => setScheduleModal(true)}
+          className="border border-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50">
           Schedule
         </button>
-        <button onClick={postNow} disabled={posting || !currentPost.content} className="btn-gradient text-white px-5 py-2 rounded-lg text-sm font-medium ml-auto">
+        {/* data-shortcut="publish" lets Ctrl+Enter trigger post from anywhere */}
+        <button data-shortcut="publish" onClick={postNow} disabled={posting || !currentPost.content}
+          className="btn-gradient text-white px-5 py-2 rounded-lg text-sm font-medium ml-auto disabled:opacity-60">
           {posting ? 'Posting…' : 'Post Now'}
         </button>
       </div>
 
-      {/* Schedule modal */}
+      {/* ── Schedule modal ──────────────────────────────────────────────────── */}
       {scheduleModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-6 w-80 space-y-4">
@@ -375,11 +462,108 @@ export default function Composer() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <div className="flex gap-2">
-              <button onClick={schedule} disabled={scheduling} className="flex-1 btn-gradient text-white px-4 py-2 rounded-lg text-sm font-medium">
+              <button onClick={schedule} disabled={scheduling}
+                className="flex-1 btn-gradient text-white px-4 py-2 rounded-lg text-sm font-medium">
                 {scheduling ? 'Scheduling…' : 'Confirm'}
               </button>
               <button onClick={() => setScheduleModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Hook generator modal ────────────────────────────────────────────── */}
+      {hooksModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-[480px] max-h-[70vh] flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Hook Generator</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Click a hook to prepend it to your post.</p>
+              </div>
+              <button onClick={() => setHooksModal(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+            {hooksLoading ? (
+              <p className="text-sm text-gray-400 animate-pulse text-center py-8">Generating hooks…</p>
+            ) : hooks.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No hooks generated.</p>
+            ) : (
+              <div className="overflow-y-auto space-y-3 flex-1 scrollbar-slim">
+                {hooks.map(({ type, hook }, i) => (
+                  <div key={i} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:border-indigo-200 transition-colors">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-indigo-600 shrink-0">
+                        {type.replace(/-/g, ' ')}
+                      </span>
+                      <button onClick={() => useHook(hook)} className="text-xs text-indigo-600 hover:underline font-medium shrink-0">
+                        Use →
+                      </button>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed">{hook}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Repurpose engine modal ──────────────────────────────────────────── */}
+      {repurposeModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-[560px] max-h-[80vh] flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Repurpose Post</h2>
+              <button
+                onClick={() => { setRepurposeModal(false); setRepurposeResult('') }}
+                className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+              >✕</button>
+            </div>
+
+            {/* Format picker */}
+            <div className="flex gap-2">
+              {(['x-thread', 'reddit', 'longform'] as const).map((fmt) => (
+                <button key={fmt} onClick={() => setRepurposeFormat(fmt)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                    repurposeFormat === fmt
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>
+                  {fmt === 'x-thread' ? 'X Thread' : fmt === 'reddit' ? 'Reddit Post' : 'Long-form Blog'}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={generateRepurpose} disabled={repurposeLoading}
+              className="btn-gradient text-white px-4 py-2 rounded-lg text-sm font-medium w-fit disabled:opacity-60">
+              {repurposeLoading ? 'Generating…' : 'Generate'}
+            </button>
+
+            {repurposeResult && (
+              <div className="flex-1 overflow-y-auto min-h-[160px] border border-gray-200 rounded-xl p-4 bg-gray-50 scrollbar-slim">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{repurposeResult}</p>
+              </div>
+            )}
+
+            {repurposeResult && !repurposeLoading && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { navigator.clipboard.writeText(repurposeResult); toast.success('Copied!') }}
+                  className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+                  Copy
+                </button>
+                <button
+                  onClick={() => {
+                    setPostContent(repurposeResult)
+                    setRepurposeModal(false)
+                    setRepurposeResult('')
+                    toast.success('Content replaced')
+                  }}
+                  className="btn-gradient text-white px-4 py-2 rounded-lg text-sm">
+                  Use as Post
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

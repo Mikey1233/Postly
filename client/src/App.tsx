@@ -1,20 +1,34 @@
-import { useState } from 'react'
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { useEffect, useState, lazy, Suspense, useRef } from 'react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import useAppStore from './store/useAppStore'
-import { PLATFORM_COLORS, PLATFORM_LABELS } from './lib/platformLimits'
+import { PLATFORM_LABELS } from './lib/platformLimits'
 import type { Platform } from './lib/platformLimits'
+import PlatformIcon from './components/ui/PlatformIcon'
+import api from './lib/api'
+import { useDarkMode } from './hooks/useDarkMode'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import {
+  requestNotificationPermission,
+  notifyPostPublished,
+  notifyPostFailed,
+  notifyTokenExpiringSoon,
+} from './lib/notifications'
 
-import Dashboard       from './pages/Dashboard'
-import Composer        from './pages/Composer'
-import CarouselBuilder from './pages/CarouselBuilder'
-import Calendar        from './pages/Calendar'
-import Analytics       from './pages/Analytics'
-import Platforms       from './pages/Platforms'
-import VoiceSetup      from './pages/VoiceSetup'
-import Groups          from './pages/Groups'
-import MediaLibrary    from './pages/MediaLibrary'
-import Settings        from './pages/Settings'
+import Login         from './pages/Login'
+import SignUp        from './pages/SignUp'
+import Dashboard     from './pages/Dashboard'
+import Composer      from './pages/Composer'
+import Platforms     from './pages/Platforms'
+import VoiceSetup    from './pages/VoiceSetup'
+import Groups        from './pages/Groups'
+import Settings      from './pages/Settings'
+
+// Lazy-loaded heavy pages
+const CarouselBuilder = lazy(() => import('./pages/CarouselBuilder'))
+const Calendar        = lazy(() => import('./pages/Calendar'))
+const Analytics       = lazy(() => import('./pages/Analytics'))
+const MediaLibrary    = lazy(() => import('./pages/MediaLibrary'))
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -54,21 +68,44 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="w-[18px] h-[18px]"
-    >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
+      className="w-[18px] h-[18px]">
       <rect x="3" y="4" width="18" height="16" rx="2.5" />
       <line x1="9" y1="4" x2="9" y2="20" />
       {collapsed
         ? <polyline points="13.5 9 16.5 12 13.5 15" />
         : <polyline points="16.5 9 13.5 12 16.5 15" />}
+    </svg>
+  )
+}
+
+function SunIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  )
+}
+
+function LogoutIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   )
 }
@@ -82,11 +119,10 @@ interface NavItemProps { to: string; label: string; iconKey: string; collapsed: 
 function NavItem({ to, label, iconKey, collapsed, end }: NavItemProps) {
   return (
     <NavLink
-      to={to}
-      end={end}
+      to={to} end={end}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 group
+        `flex items-center gap-3 py-2 rounded-xl text-sm font-medium transition-all duration-150
         ${collapsed ? 'justify-center px-2' : 'px-3'}
         ${isActive
           ? 'bg-indigo-50 text-indigo-700'
@@ -117,8 +153,30 @@ function NavGroup({ label, collapsed, children }: NavGroupProps) {
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false)
-  const connections = useAppStore((s) => s.platformConnections)
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth < 900)
+  const userToggled = useRef(false)
+  const connections    = useAppStore((s) => s.platformConnections)
+  const darkMode       = useAppStore((s) => s.darkMode)
+  const toggleDarkMode = useAppStore((s) => s.toggleDarkMode)
+  const setAuth        = useAppStore((s) => s.setAuth)
+  const profileName    = useAppStore((s) => s.profileName)
+
+  useEffect(() => {
+    const onResize = () => {
+      if (userToggled.current) return
+      setCollapsed(window.innerWidth < 900)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const onToggle = () => { userToggled.current = true; setCollapsed((c) => !c) }
+
+  const logout = async () => {
+    try { await api.post('/api/auth/logout') } catch { /* ignore */ }
+    setAuth({ authenticated: false })
+    window.location.replace('/login')
+  }
 
   return (
     <aside
@@ -134,9 +192,7 @@ function Sidebar() {
             <span className="text-lg font-bold tracking-tight text-indigo-600">Postly</span>
           </div>
         )}
-
-        <button
-          onClick={() => setCollapsed((c) => !c)}
+        <button onClick={onToggle}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className={`p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-indigo-600 transition-colors ${collapsed ? 'mt-1' : ''}`}
@@ -147,9 +203,9 @@ function Sidebar() {
 
       {/* Nav links */}
       <div className="flex flex-col gap-0.5">
-        <NavItem to="/"        label="Dashboard" iconKey="dashboard" collapsed={collapsed} end />
-        <NavItem to="/compose" label="Compose"   iconKey="compose"   collapsed={collapsed} />
-        <NavItem to="/calendar" label="Calendar" iconKey="calendar"  collapsed={collapsed} />
+        <NavItem to="/"          label="Dashboard" iconKey="dashboard" collapsed={collapsed} end />
+        <NavItem to="/compose"   label="Compose"   iconKey="compose"   collapsed={collapsed} />
+        <NavItem to="/calendar"  label="Calendar"  iconKey="calendar"  collapsed={collapsed} />
         <NavItem to="/analytics" label="Analytics" iconKey="analytics" collapsed={collapsed} />
 
         <NavGroup label="LinkedIn" collapsed={collapsed}>
@@ -158,7 +214,7 @@ function Sidebar() {
         </NavGroup>
 
         <NavGroup label="Content" collapsed={collapsed}>
-          <NavItem to="/groups" label="Groups"       iconKey="groups" collapsed={collapsed} />
+          <NavItem to="/groups" label="Groups"        iconKey="groups" collapsed={collapsed} />
           <NavItem to="/media"  label="Media Library" iconKey="media"  collapsed={collapsed} />
         </NavGroup>
 
@@ -168,37 +224,130 @@ function Sidebar() {
         </NavGroup>
       </div>
 
-      {/* Platform status dots */}
-      <div className="mt-auto pt-4 border-t border-gray-100">
-        <div className={`flex gap-1.5 ${collapsed ? 'flex-col items-center' : 'flex-row px-1'}`}>
+      {/* Footer: dark mode toggle + logout + platform status */}
+      <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col gap-2">
+        <button onClick={toggleDarkMode}
+          title={`Switch to ${darkMode ? 'light' : 'dark'} mode`}
+          aria-label="Toggle theme"
+          className={`flex items-center gap-2 rounded-lg text-sm text-gray-500 hover:text-indigo-600 hover:bg-gray-100 transition-colors ${collapsed ? 'justify-center p-2' : 'px-3 py-2'}`}
+        >
+          {darkMode ? <SunIcon /> : <MoonIcon />}
+          {!collapsed && <span>{darkMode ? 'Light mode' : 'Dark mode'}</span>}
+        </button>
+
+        {!collapsed && profileName && (
+          <p className="text-xs font-medium text-gray-700 px-1 truncate" title={profileName}>{profileName}</p>
+        )}
+
+        <button onClick={logout}
+          title="Sign out"
+          aria-label="Sign out"
+          className={`flex items-center gap-2 rounded-lg text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors ${collapsed ? 'justify-center p-2' : 'px-3 py-2'}`}
+        >
+          <LogoutIcon />
+          {!collapsed && <span>Sign out</span>}
+        </button>
+
+        <div className={`flex gap-1.5 pt-1 ${collapsed ? 'flex-col items-center' : 'flex-wrap px-1'}`}>
           {ALL_PLATFORMS.map((p) => {
             const conn = connections[p]
             const connected = conn?.connected && conn?.state !== 'expired'
             return (
               <div key={p} title={`${PLATFORM_LABELS[p]}: ${connected ? 'Connected' : 'Not connected'}`}>
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: connected ? PLATFORM_COLORS[p] : '#d1d5db' }}
-                />
+                <PlatformIcon platform={p} size={14} className={connected ? '' : 'opacity-40 grayscale'} />
               </div>
             )
           })}
         </div>
-        {!collapsed && <p className="text-[10px] text-gray-400 mt-1.5 px-1">Platform status</p>}
+        {!collapsed && <p className="text-[10px] text-gray-400 px-1">Platform status</p>}
       </div>
     </aside>
   )
 }
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// ── RequireAuth ───────────────────────────────────────────────────────────────
 
-export default function App() {
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const auth = useAppStore((s) => s.auth)
+  if (!auth.checked) return <div className="flex items-center justify-center h-screen text-gray-400 text-sm">Loading…</div>
+  if (!auth.setupDone) return <Navigate to="/signup" replace />
+  if (!auth.authenticated) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+// ── AppShell ──────────────────────────────────────────────────────────────────
+
+function PageLoader() {
+  return <div className="p-6 text-gray-400 text-sm">Loading…</div>
+}
+
+interface RecentPost { id: string; status: string; platform: string[] }
+
+function AppShell() {
+  useKeyboardShortcuts()
+  const navigate = useNavigate()
+  const setPlatformConnections = useAppStore((s) => s.setPlatformConnections)
+  const setVoiceProfile        = useAppStore((s) => s.setVoiceProfile)
+  const setProfileName         = useAppStore((s) => s.setProfileName)
+  const setProfileEmail        = useAppStore((s) => s.setProfileEmail)
+  const platformConnections    = useAppStore((s) => s.platformConnections)
+  const seenPostStatus = useRef<Record<string, string>>({})
+
+  useEffect(() => {
+    requestNotificationPermission()
+    api.get('/api/platforms/status').then((r) => setPlatformConnections(r.data)).catch(() => {})
+    api.get('/api/auth/profile').then(({ data }) => {
+      setProfileName(data.name)
+      setProfileEmail(data.email)
+    }).catch(() => {})
+    ;(['linkedin', 'x', 'facebook', 'reddit'] as Platform[]).forEach(async (p) => {
+      try {
+        const { data } = await api.get(`/api/voice/${p}`)
+        if (data?.system_prompt) setVoiceProfile(p, { systemPrompt: data.system_prompt, analysis: data.analysis })
+      } catch { /* no profile yet */ }
+    })
+  }, [setPlatformConnections, setVoiceProfile, setProfileName, setProfileEmail])
+
+  // Token-expiry OS notifications — once per session per platform
+  useEffect(() => {
+    const fired: Record<string, boolean> = {}
+    for (const [platform, conn] of Object.entries(platformConnections)) {
+      if (!conn?.expiresAt || !conn.connected) continue
+      const daysLeft = Math.floor((new Date(conn.expiresAt).getTime() - Date.now()) / 86_400_000)
+      if (daysLeft > 0 && daysLeft <= 7 && !fired[platform]) {
+        fired[platform] = true
+        notifyTokenExpiringSoon(PLATFORM_LABELS[platform as Platform] || platform, daysLeft)
+      }
+    }
+  }, [platformConnections])
+
+  // Poll for post status transitions every 30s → OS notifications
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const { data } = await api.get<RecentPost[]>('/api/posts/recent')
+        if (cancelled) return
+        for (const post of data) {
+          const prev = seenPostStatus.current[post.id]
+          seenPostStatus.current[post.id] = post.status
+          if (prev && prev !== post.status) {
+            if (post.status === 'published') notifyPostPublished(post.platform)
+            if (post.status === 'failed' || post.status === 'partial') notifyPostFailed(post.platform)
+          }
+        }
+      } catch { /* swallow polling errors */ }
+    }
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [navigate])
+
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
-      <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto">
+    <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/"                 element={<Dashboard />} />
             <Route path="/compose"          element={<Composer />} />
@@ -211,8 +360,47 @@ export default function App() {
             <Route path="/media"            element={<MediaLibrary />} />
             <Route path="/settings"         element={<Settings />} />
           </Routes>
-        </main>
-      </div>
+        </Suspense>
+      </main>
+    </div>
+  )
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  useDarkMode()
+  const setAuth = useAppStore((s) => s.setAuth)
+
+  // Run verify + setup-status in parallel on every page load.
+  // Both must resolve before RequireAuth renders the app (auth.checked gate).
+  useEffect(() => {
+    Promise.all([
+      api.get('/api/auth/verify'),
+      api.get('/api/auth/setup-status'),
+    ])
+      .then(([verifyRes, setupRes]) =>
+        setAuth({
+          checked:       true,
+          authenticated: verifyRes.data.authenticated,
+          setupDone:     setupRes.data.configured,
+        })
+      )
+      .catch(() => setAuth({ authenticated: false, setupDone: false }))
+  }, [setAuth])
+
+  return (
+    <BrowserRouter>
+      <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+      <Routes>
+        <Route path="/login"  element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/*" element={
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        } />
+      </Routes>
     </BrowserRouter>
   )
 }

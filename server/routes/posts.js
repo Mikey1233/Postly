@@ -9,12 +9,38 @@ router.get('/scheduled', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/posts/history?page=1&limit=20
+// GET /api/posts/history?page=1&limit=20&search=...&platform=linkedin&type=carousel&from=...&to=...&pillar=...
 router.get('/history', async (req, res, next) => {
   try {
     const limit  = Math.min(Number(req.query.limit) || 50, 200);
     const offset = (Number(req.query.page || 1) - 1) * limit;
-    res.json(await db.posts.getHistory(limit, offset));
+    const filters = {
+      search:   req.query.search   || null,
+      platform: req.query.platform || null,
+      postType: req.query.type     || null,
+      pillarId: req.query.pillar   || null,
+      from:     req.query.from     || null,
+      to:       req.query.to       || null,
+      status:   req.query.status   || null,
+    };
+    res.json(await db.posts.getHistory(limit, offset, filters));
+  } catch (err) { next(err); }
+});
+
+// GET /api/posts/recent?status=published&sinceMinutes=30
+router.get('/recent', async (req, res, next) => {
+  try {
+    res.json(await db.posts.getRecent({
+      status:       req.query.status || null,
+      sinceMinutes: Number(req.query.sinceMinutes) || 30,
+    }));
+  } catch (err) { next(err); }
+});
+
+// GET /api/posts/stats
+router.get('/stats', async (_req, res, next) => {
+  try {
+    res.json(await db.posts.getStats());
   } catch (err) { next(err); }
 });
 

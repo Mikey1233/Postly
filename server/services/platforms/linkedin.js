@@ -2,7 +2,9 @@ const { encrypt, decrypt } = require('../../middleware/tokenCrypto');
 
 const AUTH_BASE = 'https://www.linkedin.com/oauth/v2';
 const API_BASE  = 'https://api.linkedin.com/v2';
-const SCOPES    = 'r_liteprofile r_emailaddress w_member_social r_organization_social';
+// openid + profile + email = Sign In with LinkedIn (OpenID Connect, required since 2023)
+// w_member_social = create posts on behalf of the member
+const SCOPES = 'openid profile email w_member_social';
 
 // creds = { clientId, clientSecret, redirectUri }
 function getAuthUrl(state, creds) {
@@ -62,12 +64,15 @@ async function refreshToken(conn) {
 }
 
 async function getProfile(token) {
-  const res = await fetch(`${API_BASE}/me`, {
+  // OpenID Connect userinfo — replaces the deprecated /v2/me endpoint.
+  // Returns { sub, name, given_name, family_name, email, picture }
+  // `sub` is the member's LinkedIn ID used in URNs (urn:li:person:{sub}).
+  const res = await fetch(`${API_BASE}/userinfo`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`LinkedIn profile fetch failed: ${JSON.stringify(data)}`);
-  return data; // { id, localizedFirstName, localizedLastName }
+  return data;
 }
 
 // Step 1: Register upload — returns { uploadUrl, assetUrn }

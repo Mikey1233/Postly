@@ -64,7 +64,14 @@ interface CarouselEditor {
   isDirty: boolean
 }
 
+interface AuthState {
+  checked: boolean        // have verify + setup-status both resolved?
+  authenticated: boolean  // is the session currently valid?
+  setupDone: boolean      // has a password been configured (via /signup or AUTH_PASSWORD_HASH)?
+}
+
 interface AppState {
+  auth: AuthState
   currentPost: CurrentPost
   carouselEditor: CarouselEditor
   voiceProfiles: Partial<Record<Platform, { systemPrompt: string; analysis: Record<string, unknown> }>>
@@ -76,6 +83,11 @@ interface AppState {
   autocompleteText: string
   postScore: { hookStrength: number; clarity: number; structure: number; predictedEngagement: number; suggestions: string[] } | null
 
+  profileName: string | null
+  profileEmail: string | null
+  setAuth: (patch: Partial<AuthState>) => void
+  setProfileName: (name: string | null) => void
+  setProfileEmail: (email: string | null) => void
   setPostContent: (content: string) => void
   togglePlatform: (platform: Platform) => void
   addMediaAsset: (asset: MediaAsset) => void
@@ -117,13 +129,24 @@ const DEFAULT_CAROUSEL: CarouselEditor = {
 }
 
 const useAppStore = create<AppState>((set) => ({
+  auth: { checked: false, authenticated: false, setupDone: false },
+  profileName: null,
+  profileEmail: null,
   currentPost: { ...DEFAULT_POST },
   carouselEditor: { ...DEFAULT_CAROUSEL },
   voiceProfiles: {},
   platformConnections: {},
   selectedModel: 'anthropic/claude-sonnet-4-5',
   contentPillars: [],
-  darkMode: false,
+  // Read synchronously so the very first render already has the right value — no flash.
+  darkMode: (() => {
+    try {
+      const v = localStorage.getItem('postly-dark-mode')
+      if (v === 'true')  return true
+      if (v === 'false') return false
+    } catch { /* blocked storage */ }
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
+  })(),
   isAILoading: false,
   autocompleteText: '',
   postScore: null,
@@ -160,6 +183,9 @@ const useAppStore = create<AppState>((set) => ({
   updateCarouselTheme: (theme) => set((s) => ({ carouselEditor: { ...s.carouselEditor, theme: { ...s.carouselEditor.theme, ...theme }, isDirty: true } })),
   setCarouselEditor: (patch) => set((s) => ({ carouselEditor: { ...s.carouselEditor, ...patch } })),
 
+  setAuth: (patch) => set((s) => ({ auth: { ...s.auth, checked: true, ...patch } })),
+  setProfileName:  (name)  => set({ profileName: name }),
+  setProfileEmail: (email) => set({ profileEmail: email }),
   setPlatformConnections: (connections) => set({ platformConnections: connections }),
   setVoiceProfile: (platform, profile) => set((s) => ({ voiceProfiles: { ...s.voiceProfiles, [platform]: profile } })),
   setSelectedModel: (model) => set({ selectedModel: model }),

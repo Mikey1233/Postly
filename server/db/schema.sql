@@ -211,6 +211,15 @@ INSERT INTO carousel_templates (name, description, slide_structure, is_builtin) 
   true
 );
 
+-- ── App config (added Stage 8) ───────────────────────────────────────────────
+-- Stores server-side configuration that must survive deploys.
+-- Currently holds the bcrypt password hash set via the /signup page.
+CREATE TABLE IF NOT EXISTS app_config (
+  key        TEXT PRIMARY KEY,
+  value      TEXT        NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- ── Storage Buckets ───────────────────────────────────────────────────────────
 -- Run these in the Supabase Storage section (or via API):
 --   bucket: postly-media    (private)

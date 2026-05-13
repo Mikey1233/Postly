@@ -57,14 +57,50 @@ module.exports = {
     return data;
   },
 
-  async getHistory(limit = 50, offset = 0) {
-    const { data, error } = await supabase
+  async getHistory(limit = 50, offset = 0, filters = {}) {
+    let query = supabase
       .from('posts').select('*, post_analytics(*)')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('published_at', { ascending: false });
+
+    query = filters.status ? query.eq('status', filters.status) : query.eq('status', 'published');
+    if (filters.search)   query = query.ilike('content', `%${filters.search}%`);
+    if (filters.platform) query = query.contains('platform', [filters.platform]);
+    if (filters.postType) query = query.eq('post_type', filters.postType);
+    if (filters.pillarId) query = query.eq('voice_profile_id', filters.pillarId); // pillars map to voice_profile_id for now
+    if (filters.from)     query = query.gte('published_at', filters.from);
+    if (filters.to)       query = query.lte('published_at', filters.to);
+
+    const { data, error } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
     return data;
+  },
+
+  // Posts updated in the last N minutes — used by the dashboard polling for
+  // published/failed transitions. Default 30 minutes covers the polling gap
+  // plus a buffer for missed ticks.
+  async getRecent({ status, sinceMinutes = 30 } = {}) {
+    const since = new Date(Date.now() - sinceMinutes * 60_000).toISOString();
+    let query = supabase
+      .from('posts').select('id, content, platform, status, published_at, updated_at')
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false });
+    if (status) query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async getStats() {
+    const [published, scheduled, carousels] = await Promise.all([
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'scheduled'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('post_type', 'carousel'),
+    ]);
+    return {
+      totalPosts:     published.count  ?? 0,
+      scheduledPosts: scheduled.count  ?? 0,
+      totalCarousels: carousels.count  ?? 0,
+    };
   },
 
   async remove(id) {

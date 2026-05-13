@@ -1,20 +1,30 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+const express      = require('express');
+const cors         = require('cors');
+const cookieParser = require('cookie-parser');
+const requireAuth  = require('./middleware/requireAuth');
 
 const app = express();
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
+app.use(cors({
+  origin:      process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-app.use('/api/ai',        require('./routes/ai'));
-app.use('/api/posts',     require('./routes/posts'));
-app.use('/api/platforms', require('./routes/platforms'));
-app.use('/api/voice',     require('./routes/voice'));
-app.use('/api/media',     require('./routes/media'));
-app.use('/api/carousel',  require('./routes/carousel'));
-app.use('/api/schedule',  require('./routes/schedule'));
+// Auth route is public — no requireAuth guard
+app.use('/api/auth', require('./routes/auth'));
+
+// All other API routes require a valid session cookie
+app.use('/api/ai',        requireAuth, require('./routes/ai'));
+app.use('/api/posts',     requireAuth, require('./routes/posts'));
+app.use('/api/platforms', requireAuth, require('./routes/platforms'));
+app.use('/api/voice',     requireAuth, require('./routes/voice'));
+app.use('/api/media',     requireAuth, require('./routes/media'));
+app.use('/api/carousel',  requireAuth, require('./routes/carousel'));
+app.use('/api/schedule',  requireAuth, require('./routes/schedule'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

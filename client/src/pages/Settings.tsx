@@ -14,19 +14,94 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
 
 export default function Settings() {
   const navigate = useNavigate()
-  const { selectedModel, setSelectedModel, contentPillars, setContentPillars } = useAppStore(
-    useShallow((s) => ({ selectedModel: s.selectedModel, setSelectedModel: s.setSelectedModel, contentPillars: s.contentPillars, setContentPillars: s.setContentPillars }))
+  const {
+    selectedModel, setSelectedModel, contentPillars, setContentPillars,
+    profileName, setProfileName, profileEmail, setProfileEmail,
+  } = useAppStore(
+    useShallow((s) => ({
+      selectedModel:     s.selectedModel,
+      setSelectedModel:  s.setSelectedModel,
+      contentPillars:    s.contentPillars,
+      setContentPillars: s.setContentPillars,
+      profileName:       s.profileName,
+      setProfileName:    s.setProfileName,
+      profileEmail:      s.profileEmail,
+      setProfileEmail:   s.setProfileEmail,
+    }))
   )
 
   const [models, setModels]   = useState<{ id: string; name: string; bestFor: string }[]>([])
   const [pillars, setPillars] = useState<Pillar[]>(contentPillars)
   const [newPillar, setNewPillar] = useState({ name: '', color: COLORS[0] })
   const [editingPillar, setEditingPillar] = useState<string | null>(null)
+  const [nameInput, setNameInput]   = useState(profileName ?? '')
+  const [emailInput, setEmailInput] = useState(profileEmail ?? '')
+  const [nameSaving, setNameSaving] = useState(false)
 
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
     api.get('/api/posts/history').catch(() => {}) // warm up
   }, [])
+
+  const saveProfile = async () => {
+    if (!nameInput.trim() && !emailInput.trim()) { toast.error('Nothing to save'); return }
+    if (emailInput.trim() && !emailInput.includes('@')) { toast.error('Enter a valid email'); return }
+    setNameSaving(true)
+    try {
+      const body: Record<string, string> = {}
+      if (nameInput.trim())  body.name  = nameInput.trim()
+      if (emailInput.trim()) body.email = emailInput.trim()
+      await api.put('/api/auth/profile', body)
+      if (body.name)  setProfileName(body.name)
+      if (body.email) setProfileEmail(body.email)
+      toast.success('Profile saved')
+    } catch { toast.error('Failed to save profile') }
+    finally { setNameSaving(false) }
+  }
+
+  const exportData = async (format: 'json' | 'csv') => {
+    try {
+      const { data } = await api.get('/api/posts/history?limit=200')
+      const rows = data as Array<Record<string, unknown>>
+      let content: string
+      let filename: string
+      let mimeType: string
+
+      if (format === 'json') {
+        content = JSON.stringify(rows, null, 2)
+        filename = 'postly-export.json'
+        mimeType = 'application/json'
+      } else {
+        const header = 'id,content,platforms,post_type,status,published_at,impressions,likes,comments\n'
+        const body = rows.map((p) => {
+          const a = (p.post_analytics as Record<string, unknown>[])?.[0] ?? {}
+          return [
+            p.id,
+            `"${String(p.content ?? '').replace(/"/g, '""')}"`,
+            ((p.platform as string[]) ?? []).join(';'),
+            p.post_type ?? '',
+            p.status ?? '',
+            p.published_at ?? '',
+            (a as Record<string, unknown>).impressions ?? '',
+            (a as Record<string, unknown>).likes ?? '',
+            (a as Record<string, unknown>).comments ?? '',
+          ].join(',')
+        }).join('\n')
+        content = header + body
+        filename = 'postly-export.csv'
+        mimeType = 'text/csv'
+      }
+
+      const blob = new Blob([content], { type: mimeType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Exported ${rows.length} posts as ${format.toUpperCase()}`)
+    } catch { toast.error('Export failed') }
+  }
 
   const addPillar = async () => {
     if (!newPillar.name.trim()) { toast.error('Enter a pillar name'); return }
@@ -47,11 +122,33 @@ export default function Settings() {
     setContentPillars(updated)
   }
 
-  const DEFAULT_PLATFORMS: Platform[] = ['linkedin']
-
   return (
     <div className="p-6 max-w-2xl space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+
+      {/* Profile */}
+      <section className="space-y-3">
+        <h2 className="font-semibold text-gray-800">Profile</h2>
+        <div className="space-y-2">
+          <input
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            placeholder="Your name"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <input
+            type="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="Email address"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <button onClick={saveProfile} disabled={nameSaving}
+            className="btn-gradient text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60">
+            {nameSaving ? 'Saving…' : 'Save profile'}
+          </button>
+        </div>
+      </section>
 
       {/* AI Model */}
       <section className="space-y-3">
@@ -148,8 +245,8 @@ export default function Settings() {
       <section className="space-y-3">
         <h2 className="font-semibold text-gray-800">Data Export</h2>
         <div className="flex gap-3">
-          <button className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Export as JSON</button>
-          <button className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Export as CSV</button>
+          <button onClick={() => exportData('json')} className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Export as JSON</button>
+          <button onClick={() => exportData('csv')}  className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">Export as CSV</button>
         </div>
       </section>
     </div>

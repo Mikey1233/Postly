@@ -123,8 +123,8 @@ router.get('/:platform/callback', async (req, res, next) => {
           access_token:     encrypt(tokens.access_token),
           refresh_token:    tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
           token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
-          account_id:       profile.id,
-          account_name:     `${profile.localizedFirstName} ${profile.localizedLastName}`,
+          account_id:   profile.sub,
+          account_name: profile.name || [profile.given_name, profile.family_name].filter(Boolean).join(' '),
         });
         break;
       }

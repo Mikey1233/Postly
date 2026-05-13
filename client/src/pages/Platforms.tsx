@@ -4,7 +4,6 @@ import toast from 'react-hot-toast'
 import api, { BASE_URL } from '../lib/api'
 import { PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
-import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
 

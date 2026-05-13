@@ -1,12 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import api from '../lib/api'
 import { formatDate } from '../lib/utils'
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 
+const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+const POST_TYPES = ['text', 'image', 'video', 'carousel'] as const
+
 interface AnalyticsRow { impressions: number; likes: number; comments: number; shares: number }
-interface PostRow { id: string; content: string; platform: Platform[]; publishedAt: string; postAnalytics: AnalyticsRow[] }
+interface PostRow {
+  id: string
+  content: string
+  platform: Platform[]
+  published_at: string
+  post_type?: string
+  platform_post_ids?: Record<string, { id?: string; url?: string }>
+  post_analytics: AnalyticsRow[]
+}
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
@@ -18,19 +29,33 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function Analytics() {
-  const [posts, setPosts]   = useState<PostRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [sortBy, setSortBy]   = useState<'impressions' | 'likes' | 'date'>('date')
+  const [posts, setPosts]       = useState<PostRow[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [sortBy, setSortBy]     = useState<'impressions' | 'likes' | 'date'>('date')
+  const [search, setSearch]     = useState('')
+  const [filterPlatform, setFilterPlatform] = useState<Platform | ''>('')
+  const [filterType, setFilterType]         = useState('')
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    api.get('/api/posts/history')
-      .then((r) => setPosts(r.data))
-      .catch(() => toast.error('Failed to load analytics'))
-      .finally(() => setLoading(false))
-  }, [])
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    const delay = search ? 400 : 0
+    searchTimer.current = setTimeout(() => {
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (search)         params.set('search',   search)
+      if (filterPlatform) params.set('platform', filterPlatform)
+      if (filterType)     params.set('type',     filterType)
+      api.get(`/api/posts/history?${params}`)
+        .then((r) => setPosts(r.data))
+        .catch(() => toast.error('Failed to load analytics'))
+        .finally(() => setLoading(false))
+    }, delay)
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
+  }, [search, filterPlatform, filterType])
 
   const totals = posts.reduce((acc, p) => {
-    p.postAnalytics?.forEach((a) => {
+    p.post_analytics?.forEach((a) => {
       acc.impressions += a.impressions || 0
       acc.likes       += a.likes || 0
       acc.comments    += a.comments || 0
@@ -39,20 +64,48 @@ export default function Analytics() {
   }, { impressions: 0, likes: 0, comments: 0 })
 
   const sorted = [...posts].sort((a, b) => {
-    const ga = (field: keyof AnalyticsRow) => a.postAnalytics?.[0]?.[field] || 0
-    const gb = (field: keyof AnalyticsRow) => b.postAnalytics?.[0]?.[field] || 0
+    const ga = (field: keyof AnalyticsRow) => a.post_analytics?.[0]?.[field] || 0
+    const gb = (field: keyof AnalyticsRow) => b.post_analytics?.[0]?.[field] || 0
     if (sortBy === 'impressions') return gb('impressions') - ga('impressions')
     if (sortBy === 'likes')       return gb('likes') - ga('likes')
-    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    return new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
   })
 
-  const maxImp = Math.max(...posts.map((p) => p.postAnalytics?.[0]?.impressions || 0), 1)
+  const maxImp = Math.max(...posts.map((p) => p.post_analytics?.[0]?.impressions || 0), 1)
 
   if (loading) return <div className="p-6 text-gray-400">Loading…</div>
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
-      <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+      </div>
+
+      {/* Search + filters */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search posts…"
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+        <select
+          value={filterPlatform}
+          onChange={(e) => setFilterPlatform(e.target.value as Platform | '')}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        >
+          <option value="">All platforms</option>
+          {ALL_PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABELS[p]}</option>)}
+        </select>
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        >
+          <option value="">All types</option>
+          {POST_TYPES.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+        </select>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Published Posts"   value={posts.length} />
@@ -66,7 +119,7 @@ export default function Analytics() {
           <h2 className="font-semibold text-gray-800 mb-4">Top Posts by Impressions</h2>
           <div className="space-y-2">
             {sorted.slice(0, 8).map((post) => {
-              const imp = post.postAnalytics?.[0]?.impressions || 0
+              const imp = post.post_analytics?.[0]?.impressions || 0
               return (
                 <div key={post.id} className="flex items-center gap-3">
                   <p className="text-xs text-gray-500 w-40 truncate shrink-0">{post.content.slice(0, 35)}…</p>
@@ -98,7 +151,7 @@ export default function Analytics() {
         ) : (
           <div className="divide-y divide-gray-100">
             {sorted.map((post) => {
-              const a = post.postAnalytics?.[0] || {} as Partial<AnalyticsRow>
+              const a = post.post_analytics?.[0] || {} as Partial<AnalyticsRow>
               return (
                 <div key={post.id} className="px-5 py-4 flex items-start gap-4">
                   <div className="flex-1 min-w-0">
@@ -106,7 +159,7 @@ export default function Analytics() {
                       {post.platform.map((p) => (
                         <span key={p} className="text-xs text-white px-2 py-0.5 rounded-full" style={{ backgroundColor: PLATFORM_COLORS[p] }}>{PLATFORM_LABELS[p]}</span>
                       ))}
-                      <span className="text-xs text-gray-400">{formatDate(post.publishedAt)}</span>
+                      <span className="text-xs text-gray-400">{post.published_at ? formatDate(post.published_at) : '—'}</span>
                     </div>
                     <p className="text-sm text-gray-700 truncate">{post.content}</p>
                   </div>

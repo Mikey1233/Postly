@@ -1,32 +1,63 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import api from '../lib/api'
-import { formatDate, timeAgo } from '../lib/utils'
+import api, { BASE_URL } from '../lib/api'
+import { formatDate } from '../lib/utils'
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
-interface UpcomingPost { id: string; content: string; platform: Platform[]; scheduledAt: string; status: string }
-interface PlatformStat { platform: Platform; impressions: number; engagement: number }
+interface UpcomingPost { id: string; content: string; platform: Platform[]; scheduled_at: string; status: string }
+
+function ExpiringTokensBanner({ connections }: { connections: ReturnType<typeof useAppStore.getState>['platformConnections'] }) {
+  const expiring = Object.entries(connections)
+    .map(([platform, conn]) => {
+      if (!conn?.connected || !conn.expiresAt) return null
+      const daysLeft = Math.floor((new Date(conn.expiresAt).getTime() - Date.now()) / 86_400_000)
+      if (daysLeft > 7 || daysLeft < 0) return null
+      return { platform: platform as Platform, daysLeft }
+    })
+    .filter((x): x is { platform: Platform; daysLeft: number } => x !== null)
+
+  if (expiring.length === 0) return null
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+      {expiring.map(({ platform, daysLeft }) => (
+        <div key={platform} className="flex items-center justify-between gap-3">
+          <p className="text-sm text-amber-800">
+            <span className="font-medium">{PLATFORM_LABELS[platform]}</span> connection expires in {daysLeft} day{daysLeft === 1 ? '' : 's'} — reconnect to keep scheduled posts working.
+          </p>
+          <a
+            href={`${BASE_URL}/api/platforms/${platform}/auth`}
+            className="text-sm font-medium text-amber-900 hover:underline shrink-0"
+          >
+            Reconnect →
+          </a>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { setPlatformConnections, platformConnections } = useAppStore(
-    useShallow((s) => ({ setPlatformConnections: s.setPlatformConnections, platformConnections: s.platformConnections }))
+  const { setPlatformConnections, platformConnections, profileName } = useAppStore(
+    useShallow((s) => ({ setPlatformConnections: s.setPlatformConnections, platformConnections: s.platformConnections, profileName: s.profileName }))
   )
 
-  const [upcoming, setUpcoming]   = useState<UpcomingPost[]>([])
-  const [failed, setFailed]       = useState<UpcomingPost[]>([])
-  const [stats, setStats]         = useState({ totalPosts: 0, totalCarousels: 0, aiDrafts: 0 })
-  const [loading, setLoading]     = useState(true)
+  const [upcoming, setUpcoming] = useState<UpcomingPost[]>([])
+  const [failed, setFailed]     = useState<UpcomingPost[]>([])
+  const [stats, setStats]       = useState({ totalPosts: 0, scheduledPosts: 0, totalCarousels: 0 })
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     Promise.all([
       api.get('/api/platforms/status').then((r) => setPlatformConnections(r.data)),
       api.get('/api/posts/scheduled').then((r) => setUpcoming(r.data.slice(0, 6))),
+      api.get('/api/posts/stats').then((r) => setStats(r.data)),
+      api.get('/api/posts/recent?status=failed').then((r) => setFailed(r.data)).catch(() => {}),
     ])
       .catch(() => toast.error('Failed to load dashboard data'))
       .finally(() => setLoading(false))
@@ -42,17 +73,19 @@ export default function Dashboard() {
   return (
     <div className="p-6 max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{greeting} 👋</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{greeting}{profileName ? `, ${profileName}` : ''} 👋</h1>
         <p className="text-sm text-gray-500 mt-0.5">{connectedCount} platform{connectedCount !== 1 ? 's' : ''} connected</p>
       </div>
+
+      <ExpiringTokensBanner connections={platformConnections} />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Scheduled', value: upcoming.length },
-          { label: 'Platforms', value: connectedCount },
-          { label: 'Total Posts', value: stats.totalPosts },
-          { label: 'Carousels', value: stats.totalCarousels },
+          { label: 'Total Posts',  value: stats.totalPosts },
+          { label: 'Scheduled',   value: stats.scheduledPosts },
+          { label: 'Carousels',   value: stats.totalCarousels },
+          { label: 'Platforms',   value: connectedCount },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-2xl font-bold text-gray-900">{value}</p>
@@ -83,7 +116,7 @@ export default function Dashboard() {
                     {post.platform.map((p) => (
                       <span key={p} className="text-xs font-medium px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: PLATFORM_COLORS[p] }}>{PLATFORM_LABELS[p]}</span>
                     ))}
-                    <span className="text-xs text-gray-400">{formatDate(post.scheduledAt, 'MMM d, h:mm a')}</span>
+                    <span className="text-xs text-gray-400">{post.scheduled_at ? formatDate(post.scheduled_at, 'MMM d, h:mm a') : '—'}</span>
                   </div>
                   <p className="text-sm text-gray-700 truncate">{post.content}</p>
                 </div>

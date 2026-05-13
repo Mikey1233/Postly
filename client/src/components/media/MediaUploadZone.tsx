@@ -6,6 +6,12 @@ import { validateMediaForPlatforms } from '../../lib/platformLimits'
 import type { Platform } from '../../lib/platformLimits'
 import type { MediaAsset } from '../../store/useAppStore'
 
+interface RawMediaAsset {
+  id: string; type: 'image' | 'video' | 'gif'; filename: string
+  storage_path: string; thumbnail_path: string | null
+  mime_type: string; size_bytes: number; alt_text: string | null; sort_order: number
+}
+
 interface Props {
   platforms: Platform[]
   assets: MediaAsset[]
@@ -36,20 +42,20 @@ export default function MediaUploadZone({ platforms, assets, postId, onAdd, onRe
         fd.append('sort_order', String(assets.length))
         fd.append('platforms', JSON.stringify(platforms))
 
-        const { data } = await api.post<MediaAsset>('/api/media/upload', fd, {
+        const { data } = await api.post<RawMediaAsset>('/api/media/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
         onAdd({
-          id: data.id,
-          type: data.type,
-          filename: data.filename,
-          storagePath: data.storage_path,
+          id:            data.id,
+          type:          data.type,
+          filename:      data.filename,
+          storagePath:   data.storage_path,
           thumbnailPath: data.thumbnail_path,
-          mimeType: data.mime_type,
-          sizeBytes: data.size_bytes,
-          altText: data.alt_text,
-          sortOrder: data.sort_order,
-        } as unknown as MediaAsset)
+          mimeType:      data.mime_type,
+          sizeBytes:     data.size_bytes,
+          altText:       data.alt_text,
+          sortOrder:     data.sort_order,
+        })
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Upload failed'
         toast.error(`Failed to upload ${file.name}: ${msg}`)
