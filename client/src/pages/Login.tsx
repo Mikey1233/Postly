@@ -17,7 +17,7 @@ export default function Login() {
     setLoading(true)
     try {
       await api.post('/api/auth/login', { email, password })
-      setAuth({ authenticated: true })
+      setAuth({ authenticated: true, setupDone: true })
       navigate('/', { replace: true })
     } catch {
       setError('Incorrect email or password')

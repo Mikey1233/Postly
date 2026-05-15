@@ -13,11 +13,14 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Redirect to /login whenever any API call gets a 401 (session expired or never set)
+// Redirect to /login on 401, but NOT when the 401 comes from an auth endpoint
+// (e.g. wrong password on /login should show an error, not redirect).
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const url = err.config?.url ?? ''
+    const isAuthEndpoint = url.includes('/api/auth/')
+    if (err.response?.status === 401 && !isAuthEndpoint) {
       useAppStore.getState().setAuth({ authenticated: false })
       window.location.replace('/login')
     }

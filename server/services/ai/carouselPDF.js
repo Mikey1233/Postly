@@ -6,6 +6,29 @@ const PAGE = 1080;
 const PAD  = 80;
 const W    = PAGE - 2 * PAD; // 920 — usable content width
 
+/**
+ * Replace every character outside WinAnsi (Latin-1) with a safe ASCII equivalent.
+ * pdf-lib uses Helvetica / WinAnsi encoding which covers only U+0000–U+00FF.
+ * The AI frequently produces arrows, em-dashes, smart quotes, bullets, etc.
+ */
+function sanitize(text) {
+  if (!text) return '';
+  return String(text)
+    // Common symbols the AI loves to output
+    .replace(/→|➔|➜|➡/g, '->')
+    .replace(/←|⬅/g, '<-')
+    .replace(/↑/g, '^')
+    .replace(/↓/g, 'v')
+    .replace(/•|·|▪|▸|▶/g, '*')
+    .replace(/—|—/g, '-')       // em-dash
+    .replace(/–|–/g, '-')       // en-dash
+    .replace(/[""]/g, '"')           // smart double quotes
+    .replace(/['']/g, "'")           // smart single quotes / apostrophe
+    .replace(/…|…/g, '...')     // ellipsis
+    .replace(/ /g, ' ')         // non-breaking space
+    .replace(/[^\x00-\xFF]/g, '');   // drop anything else outside Latin-1
+}
+
 function hexToRgb(hex) {
   const h = (hex || '#000000').replace('#', '');
   return rgb(
@@ -18,7 +41,7 @@ function hexToRgb(hex) {
 // Wrap text into lines that fit within maxWidth at the given fontSize
 function wrapLines(text, font, size, maxWidth) {
   const lines = [];
-  for (const para of (text || '').split('\n')) {
+  for (const para of sanitize(text || '').split('\n')) {
     const words = para.split(' ');
     let line = '';
     for (const word of words) {
@@ -60,7 +83,7 @@ function renderCover(page, slide, theme, boldFont, regFont, primary) {
   // Bottom brand bar
   page.drawRectangle({ x: 0, y: 0, width: PAGE, height: 72, color: primary });
   if (theme.brandName) {
-    page.drawText(theme.brandName, { x: PAD, y: 24, size: 22, font: boldFont, color: white });
+    page.drawText(sanitize(theme.brandName), { x: PAD, y: 24, size: 22, font: boldFont, color: white });
   }
 
   // Headline — large, starting near the top
@@ -249,4 +272,29 @@ async function generateCarouselPDF(carousel) {
   return pdfBuffer;
 }
 
-module.exports = { generateCarouselPDF };
+// ── Image-based PDF (for AI-designed carousels) ───────────────────────────────
+
+async function generateDesignedCarouselPDF(carouselId, imageStoragePaths) {
+  const pdfDoc = await PDFDocument.create();
+
+  for (const imagePath of imageStoragePaths) {
+    const imageBytes = await download(CAROUSEL_BUCKET, imagePath);
+    const page = pdfDoc.addPage([PAGE, PAGE]);
+    let img;
+    try {
+      img = await pdfDoc.embedJpg(imageBytes);
+    } catch {
+      img = await pdfDoc.embedPng(imageBytes);
+    }
+    page.drawImage(img, { x: 0, y: 0, width: PAGE, height: PAGE });
+  }
+
+  const pdfBuffer = Buffer.from(await pdfDoc.save());
+  const storagePath = `pdfs/${carouselId}/carousel.pdf`;
+  await upload(CAROUSEL_BUCKET, storagePath, pdfBuffer, 'application/pdf', { upsert: true });
+  await db.carousels.update(carouselId, { pdf_storage_path: storagePath });
+
+  return pdfBuffer;
+}
+
+module.exports = { generateCarouselPDF, generateDesignedCarouselPDF };

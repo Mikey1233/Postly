@@ -28,12 +28,14 @@ export interface SlideData {
 }
 
 export interface CarouselTheme {
-  primaryColor: string
+  primaryColor:    string
   backgroundColor: string
-  textColor: string
-  font: string
+  textColor:       string
+  font:            string   // Google Font family name, e.g. 'Poppins', 'Space Grotesk'
   logoStoragePath: string | null
-  brandName: string
+  brandName:       string
+  fontScale?:      number   // size multiplier 0.75–1.5, default 1.0
+  padding?:        number   // slide padding in %, 3–15, default 7
 }
 
 export interface ContentPillar {
@@ -121,7 +123,7 @@ const DEFAULT_POST: CurrentPost = {
 
 const DEFAULT_THEME: CarouselTheme = {
   primaryColor: '#0A66C2', backgroundColor: '#FFFFFF', textColor: '#1A1A1A',
-  font: 'Helvetica', logoStoragePath: null, brandName: '',
+  font: 'Poppins', logoStoragePath: null, brandName: '', fontScale: 1.0, padding: 7,
 }
 
 const DEFAULT_CAROUSEL: CarouselEditor = {

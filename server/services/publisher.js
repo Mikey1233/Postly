@@ -25,6 +25,9 @@ async function getActiveToken(platform, conn) {
   return { token: decrypt(conn.access_token), conn };
 }
 
+// LinkedIn carousels are always posted as Documents — a multi-page PDF uploaded
+// via /rest/documents and embedded as shareMediaCategory: DOCUMENT in the post.
+// Do NOT publish carousel slides as individual images.
 async function publishCarouselToLinkedIn(post, conn, token) {
   const carousel = await db.carousels.getById(post.carousel_id);
   if (!carousel) throw new Error(`Carousel ${post.carousel_id} not found`);
@@ -38,9 +41,10 @@ async function publishCarouselToLinkedIn(post, conn, token) {
     pdfBuffer = await generateCarouselPDF(carousel);
   }
 
-  const assetUrn = await linkedin.uploadMedia(pdfBuffer, 'application/pdf', token, conn);
-  return linkedin.publishPost(post, [assetUrn], token, conn, {
-    isDocument: true,
+  // uploadMedia with application/pdf calls initializeDocumentUpload → returns documentUrn
+  const documentUrn = await linkedin.uploadMedia(pdfBuffer, 'application/pdf', token, conn);
+  return linkedin.publishPost(post, [documentUrn], token, conn, {
+    isDocument: true,                  // required — tells publishPost to use Document post format
     title: carousel.title || 'Carousel',
   });
 }

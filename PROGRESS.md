@@ -213,10 +213,13 @@ Track your progress through the Postly build. Update this file as you complete s
 - [x] `client/src/lib/api.ts` — axios `withCredentials: true`, dev-mode proxy routing (`baseURL: ''`), 401 interceptor redirects to `/login`; `streamSSE` uses `credentials: 'include'`
 - [x] `server/.env.example` — `AUTH_PASSWORD_HASH`, `JWT_SECRET`, `SESSION_DURATION_HOURS` documented with generation commands
 - [x] TypeScript typecheck: 0 errors; `node --check` clean on all server files
+- [x] `server/middleware/authUtils.js` — `sameSite: 'none'` in production so session cookie is sent cross-origin (Vercel → Railway); fixes production redirect loop
+- [x] `client/src/lib/api.ts` — 401 interceptor skips redirect for `/api/auth/*` endpoints; fixes error-disappears-on-wrong-password bug
+- [x] `client/src/pages/Login.tsx` — `setAuth({ setupDone: true })` on successful login to prevent edge-case redirect to `/signup`
 
 **Note:** Live auth requires `AUTH_PASSWORD_HASH` and `JWT_SECRET` set in the server environment.
 
-**Status: Completed (code) — requires env vars in Railway/Render dashboard to activate**
+**Status: Completed**
 
 ---
 
@@ -228,3 +231,37 @@ Track your progress through the Postly build. Update this file as you complete s
 - [ ] Deployed separately or as Vercel route
 
 **Status: Not started**
+
+---
+
+### Stage 10: Carousel AI Upgrade
+
+#### Viral Prompt Engine
+- [x] `server/routes/carousel.js` — `VIRAL_SYSTEM_PROMPT` rewritten with Checklist/Framework/Mistake format selection, North Star Rule ("after reading this, the reader will…"), hook-as-promise-not-title principle, Save Moment concept for Slide 8
+- [x] `server/routes/carousel.js` — `buildViralPrompt()` accepts `format` param (auto/checklist/framework/mistake) and passes it to the AI
+- [x] `server/routes/carousel.js` — `POST /api/carousel/generate` upgraded: accepts `targetAudience`, `contentGoal`, `ctaKeyword`, `format`; returns `format`-shaped slides
+- [x] `server/routes/carousel.js` — `POST /api/carousel/generate-full` — generates viral slides + LinkedIn caption in parallel, saves carousel to DB, renders PDF, returns everything in one request
+- [x] `server/services/ai/openrouter.js` — Added Claude Sonnet 4.6, Gemini 2.0 Flash (`google/gemini-2.0-flash-001`), Gemini 2.5 Pro to `MODELS`; added `IMAGE_MODELS` list mapping Nano Banana aliases to OpenRouter model IDs
+
+#### Nano Banana AI Image Design
+- [x] `server/services/ai/nanobanana.js` — NEW: Nano Banana image generation via OpenRouter (`/chat/completions` with `modalities: ["image","text"]`); models: nano-banana-2 (default), nano-banana, nano-banana-pro; returns PNG Buffer directly from base64; retry with exponential back-off on 429
+- [x] `server/services/ai/slideDesignPrompt.js` — NEW: Converts each slide's content + brand theme into a detailed spatial image-generation prompt per slide type (cover/content/stat/quote/cta)
+- [x] `server/services/ai/carouselPDF.js` — Added `generateDesignedCarouselPDF(carouselId, imageStoragePaths)` — assembles Nano Banana PNG images directly into a 1080×1080 PDF
+- [x] `server/routes/carousel.js` — `POST /api/carousel/generate-designed` — full pipeline: viral content + caption (parallel) → carousel saved → Nano Banana images (3 concurrent) → uploaded to CAROUSEL_BUCKET → PDF assembled → signed URLs returned
+
+#### CarouselBuilder UI Overhaul
+- [x] `client/src/pages/CarouselBuilder.tsx` — Generate modal expanded: target audience input, content goal pill selector, CTA keyword input, format picker (Auto / Checklist / Framework / Mistake)
+- [x] `client/src/pages/CarouselBuilder.tsx` — `generateFull()` — single click: viral slides + caption + carousel saved + PDF ready
+- [x] `client/src/pages/CarouselBuilder.tsx` — `generateDesigned()` — single click: viral slides + one Nano Banana image per slide + PDF ready
+- [x] `client/src/pages/CarouselBuilder.tsx` — Three-tier modal buttons: "Generate & Design" (Nano Banana, primary), "Text + PDF" (fast), "Slides only"
+- [x] `client/src/pages/CarouselBuilder.tsx` — Animated progress messages cycle during generation ("Writing viral hooks…" → "Building the story arc…" etc.)
+- [x] `client/src/pages/CarouselBuilder.tsx` — Slide list shows narrative role labels (Hook / Setup / Main / Save Moment / Summary / CTA) and image thumbnails when AI designs are available
+- [x] `client/src/pages/CarouselBuilder.tsx` — Canvas: Prev/Next navigation buttons; `SlidePreview` renders real Nano Banana images when available, falls back to CSS preview
+- [x] `client/src/pages/CarouselBuilder.tsx` — PDF ready badge (green indicator with direct link) in header
+- [x] `server/.env.example` — Nano Banana uses `OPENROUTER_API_KEY` (no extra key needed); model aliases documented
+
+#### Bug Fixes
+- [x] `server/services/ai/carouselPDF.js` — Fixed wrong bucket in `generateDesignedCarouselPDF`: was `MEDIA_BUCKET`, must be `CAROUSEL_BUCKET` — caused `StorageApiError: Object not found` on every designed carousel
+- [x] `server/services/media/storage.js` — All four helpers (`upload`, `download`, `getSignedUrl`, `remove`) now include bucket + path in error messages for debuggability
+
+**Status: Completed**

@@ -65,10 +65,13 @@ function destroySession(token) {
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 
 function setSessionCookie(res, token) {
+  const prod = process.env.NODE_ENV === 'production';
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure:   prod,
+    // Cross-origin (Vercel → Railway) requires SameSite=None + Secure.
+    // Lax is fine for same-origin dev where the proxy collapses the origin.
+    sameSite: prod ? 'none' : 'lax',
     maxAge:   SESSION_MS,
   });
 }
