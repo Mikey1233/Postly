@@ -49,7 +49,7 @@ export default function Dashboard() {
 
   const [upcoming, setUpcoming] = useState<UpcomingPost[]>([])
   const [failed, setFailed]     = useState<UpcomingPost[]>([])
-  const [stats, setStats]       = useState({ totalPosts: 0, scheduledPosts: 0, totalCarousels: 0 })
+  const [stats, setStats]       = useState({ totalPosts: 0, scheduledPosts: 0 })
   const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
@@ -80,11 +80,10 @@ export default function Dashboard() {
       <ExpiringTokensBanner connections={platformConnections} />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total Posts',  value: stats.totalPosts },
           { label: 'Scheduled',   value: stats.scheduledPosts },
-          { label: 'Carousels',   value: stats.totalCarousels },
           { label: 'Platforms',   value: connectedCount },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4">

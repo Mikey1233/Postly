@@ -1,7 +1,6 @@
 const supabase = require('../../db/supabase');
 
 const MEDIA_BUCKET    = 'postly-media';
-const CAROUSEL_BUCKET = 'postly-carousels';
 
 async function upload(bucket, path, buffer, mimeType, { upsert = false } = {}) {
   const { data, error } = await supabase.storage
@@ -48,4 +47,4 @@ async function download(bucket, path) {
   return Buffer.from(await data.arrayBuffer());
 }
 
-module.exports = { upload, getSignedUrl, remove, download, MEDIA_BUCKET, CAROUSEL_BUCKET };
+module.exports = { upload, getSignedUrl, remove, download, MEDIA_BUCKET };

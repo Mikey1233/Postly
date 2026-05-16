@@ -3,8 +3,6 @@
 
 const posts         = require('./posts');
 const media         = require('./media');
-const carousels     = require('./carousels');
-const carouselTemplates = require('./carouselTemplates');
 const voiceProfiles = require('./voiceProfiles');
 const platformConnections  = require('./platformConnections');
 const platformCredentials  = require('./platformCredentials');
@@ -17,8 +15,6 @@ const publishLogs   = require('./publishLogs');
 module.exports = {
   posts,
   media,
-  carousels,
-  carouselTemplates,
   voiceProfiles,
   platformConnections,
   platformCredentials,

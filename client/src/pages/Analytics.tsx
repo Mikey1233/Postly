@@ -6,7 +6,7 @@ import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 
 const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
-const POST_TYPES = ['text', 'image', 'video', 'carousel'] as const
+const POST_TYPES = ['text', 'image', 'video'] as const
 
 interface AnalyticsRow { impressions: number; likes: number; comments: number; shares: number }
 interface PostRow {

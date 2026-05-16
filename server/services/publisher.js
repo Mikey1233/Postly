@@ -2,7 +2,6 @@ const db        = require('../db');
 const storage   = require('./media/storage');
 const imageProc = require('./media/imageProcessor');
 const { decrypt }   = require('../middleware/tokenCrypto');
-const { generateCarouselPDF } = require('./ai/carouselPDF');
 
 const linkedin = require('./platforms/linkedin');
 const twitter  = require('./platforms/twitter');
@@ -23,30 +22,6 @@ async function getActiveToken(platform, conn) {
     }
   }
   return { token: decrypt(conn.access_token), conn };
-}
-
-// LinkedIn carousels are always posted as Documents — a multi-page PDF uploaded
-// via /rest/documents and embedded as shareMediaCategory: DOCUMENT in the post.
-// Do NOT publish carousel slides as individual images.
-async function publishCarouselToLinkedIn(post, conn, token) {
-  const carousel = await db.carousels.getById(post.carousel_id);
-  if (!carousel) throw new Error(`Carousel ${post.carousel_id} not found`);
-
-  // Reuse cached PDF if available, otherwise generate now.
-  let pdfBuffer;
-  if (carousel.pdf_storage_path) {
-    try { pdfBuffer = await storage.download(storage.CAROUSEL_BUCKET, carousel.pdf_storage_path); }
-    catch { pdfBuffer = await generateCarouselPDF(carousel); }
-  } else {
-    pdfBuffer = await generateCarouselPDF(carousel);
-  }
-
-  // uploadMedia with application/pdf calls initializeDocumentUpload → returns documentUrn
-  const documentUrn = await linkedin.uploadMedia(pdfBuffer, 'application/pdf', token, conn);
-  return linkedin.publishPost(post, [documentUrn], token, conn, {
-    isDocument: true,                  // required — tells publishPost to use Document post format
-    title: carousel.title || 'Carousel',
-  });
 }
 
 async function publishRegularPost(post, platform, conn, token, mediaAssets) {
@@ -71,10 +46,6 @@ async function publishToPlatform(post, platform, mediaAssets) {
   const conn = await db.platformConnections.getByPlatform(platform);
   if (!conn) throw new Error(`${platform} not connected`);
   const { token, conn: liveConn } = await getActiveToken(platform, conn);
-
-  if (post.post_type === 'carousel' && platform === 'linkedin') {
-    return publishCarouselToLinkedIn(post, liveConn, token);
-  }
   return publishRegularPost(post, platform, liveConn, token, mediaAssets);
 }
 

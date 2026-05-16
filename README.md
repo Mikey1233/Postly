@@ -9,7 +9,7 @@
 Postly is a personal productivity tool built for one person. No sign-ups, no other users, no SaaS overhead. Just a fast, AI-powered interface for managing your social media presence without switching between four different apps.
 
 - **Write once** — AI adapts your post for each platform's tone and format
-- **LinkedIn-first** — carousel builder, hook generator, voice analyzer, and autocomplete all tuned for LinkedIn
+- **LinkedIn-first** — hook generator, voice analyzer, and autocomplete all tuned for LinkedIn
 - **Fully scheduled** — posts go out automatically, even when you're not at your computer
 - **Media handled** — upload images, videos, and GIFs once; platform formatting is done server-side
 - **Your voice, not AI voice** — paste your past posts, the AI learns your writing style and applies it to every draft
@@ -18,12 +18,12 @@ Postly is a personal productivity tool built for one person. No sign-ups, no oth
 
 ## Platforms
 
-| Platform | Post | Schedule | Images | Videos | Carousels | Groups |
-|---|---|---|---|---|---|---|
-| LinkedIn | ✅ | ✅ | ✅ Up to 9 | ✅ | ✅ PDF | ❌ |
-| Facebook | ✅ | ✅ | ✅ Up to 10 | ✅ | ✅ Album | ✅ |
-| X (Twitter) | ✅ | ✅ | ✅ Up to 4 | ✅ | ❌ | ❌ |
-| Reddit | ✅ | ✅ | ✅ Up to 20 | ✅ | ❌ | ✅ Subreddits |
+| Platform | Post | Schedule | Images | Videos | Groups |
+|---|---|---|---|---|---|
+| LinkedIn | ✅ | ✅ | ✅ Up to 9 | ✅ | ❌ |
+| Facebook | ✅ | ✅ | ✅ Up to 10 | ✅ | ✅ |
+| X (Twitter) | ✅ | ✅ | ✅ Up to 4 | ✅ | ❌ |
+| Reddit | ✅ | ✅ | ✅ Up to 20 | ✅ | ✅ Subreddits |
 
 ---
 
@@ -38,7 +38,6 @@ Postly is a personal productivity tool built for one person. No sign-ups, no oth
 | AI | OpenRouter (Claude, GPT-4o, Gemini, Llama) |
 | Image processing | Sharp |
 | Video processing | fluent-ffmpeg |
-| PDF generation | pdf-lib (LinkedIn carousels) |
 | Scheduler | node-cron (always-on via Railway/Render) |
 | Frontend hosting | Vercel |
 | Backend hosting | Railway or Render |
@@ -53,7 +52,6 @@ postly/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── composer/       # Post editor, autocomplete, media zone
-│   │   │   ├── carousel/       # LinkedIn carousel builder
 │   │   │   ├── media/          # Upload zone, preview grid, video player
 │   │   │   └── ui/             # Shared buttons, modals, badges
 │   │   ├── pages/              # One file per route
@@ -66,7 +64,7 @@ postly/
     ├── routes/
     ├── controllers/
     ├── services/
-    │   ├── ai/                 # OpenRouter, voice analyzer, carousel PDF
+    │   ├── ai/                 # OpenRouter, voice analyzer
     │   ├── platforms/          # LinkedIn, Twitter, Facebook, Reddit
     │   ├── media/              # Image/video processing, Supabase Storage
     │   └── scheduler/          # Cron job
@@ -153,9 +151,8 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 Open your Supabase project → SQL Editor → paste and run the full schema from `docs/02_Database_Schema.md`.
 
-Then create two Storage buckets in your Supabase project:
+Then create a Storage bucket in your Supabase project:
 - `postly-media` — set to **private**
-- `postly-carousels` — set to **private**
 
 ### 4. Run the app
 
@@ -233,13 +230,6 @@ Generate full posts from a topic or bullet points using your choice of model (Cl
 ### Brand Voice Analyzer
 Paste 5–15 of your best LinkedIn posts → AI extracts your tone, hook style, sentence length, structure, and signature phrases → saves a voice profile that's applied to every future LinkedIn draft.
 
-### LinkedIn Carousel Builder
-A three-panel editor: slide list on the left, live 1080×1080 canvas preview in the center, and slide properties on the right. AI generates the full slide content from a topic. Export as PDF and post directly to LinkedIn.
-
-**Slide types:** Cover, Content, Image, Quote, Stat, CTA
-
-**Built-in templates:** 5 Lessons, How I Did X, Myth vs Reality, Step-by-Step Guide
-
 ### Scheduling
 Pick a date and time for any post. The server's cron job checks every minute and fires posts automatically. Best-time suggestions are shown per platform.
 
@@ -256,7 +246,7 @@ Before you publish, score your draft on hook strength, clarity, structure, and p
 Enter a topic → get 5 hook variations in your voice: question, bold claim, statistic, personal story, and contrarian. One click to use any of them as your opener.
 
 ### Repurpose Engine
-Turn any published post into a carousel, long-form LinkedIn article, X thread, or Reddit post — all adapted to the target platform's tone.
+Turn any published post into a long-form LinkedIn article, X thread, or Reddit post — all adapted to the target platform's tone.
 
 ---
 
@@ -265,13 +255,11 @@ Turn any published post into a carousel, long-form LinkedIn article, X thread, o
 | Shortcut | Action |
 |---|---|
 | `Ctrl+N` | New post |
-| `Ctrl+Shift+C` | New carousel |
 | `Ctrl+S` | Save draft |
 | `Ctrl+Enter` | Publish / Schedule |
 | `Tab` | Accept autocomplete suggestion |
 | `Escape` | Dismiss autocomplete |
 | `Ctrl+Shift+A` | Trigger AI write |
-| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo (Carousel Builder) |
 
 > On Mac, use `Cmd` instead of `Ctrl`.
 

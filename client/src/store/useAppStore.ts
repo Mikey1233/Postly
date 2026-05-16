@@ -13,31 +13,6 @@ export interface MediaAsset {
   sortOrder: number
 }
 
-export interface SlideData {
-  order: number
-  type: 'cover' | 'content' | 'stat' | 'quote' | 'cta' | 'image'
-  headline?: string
-  subtext?: string
-  body?: string
-  bulletPoints?: string[]
-  statNumber?: string
-  statLabel?: string
-  quote?: string
-  attribution?: string
-  imageStoragePath?: string
-}
-
-export interface CarouselTheme {
-  primaryColor:    string
-  backgroundColor: string
-  textColor:       string
-  font:            string   // Google Font family name, e.g. 'Poppins', 'Space Grotesk'
-  logoStoragePath: string | null
-  brandName:       string
-  fontScale?:      number   // size multiplier 0.75–1.5, default 1.0
-  padding?:        number   // slide padding in %, 3–15, default 7
-}
-
 export interface ContentPillar {
   id: string
   name: string
@@ -50,20 +25,10 @@ interface CurrentPost {
   content: string
   platforms: Platform[]
   mediaAssets: MediaAsset[]
-  carouselId: string | null
-  postType: 'text' | 'image' | 'video' | 'carousel'
+  postType: 'text' | 'image' | 'video'
   pillarId: string | null
   scheduledAt: string | null
   targetGroup: { platform: Platform; groupId: string; groupName: string } | null
-}
-
-interface CarouselEditor {
-  id: string | null
-  title: string
-  slides: SlideData[]
-  theme: CarouselTheme
-  activeSlideIndex: number
-  isDirty: boolean
 }
 
 interface AuthState {
@@ -75,7 +40,6 @@ interface AuthState {
 interface AppState {
   auth: AuthState
   currentPost: CurrentPost
-  carouselEditor: CarouselEditor
   voiceProfiles: Partial<Record<Platform, { systemPrompt: string; analysis: Record<string, unknown> }>>
   platformConnections: Partial<Record<Platform, { configured: boolean; connected: boolean; state?: string; accountName?: string; expiresAt?: string }>>
   selectedModel: string
@@ -98,14 +62,6 @@ interface AppState {
   setCurrentPost: (patch: Partial<CurrentPost>) => void
   resetComposer: () => void
 
-  setActiveSlide: (index: number) => void
-  updateSlide: (index: number, data: Partial<SlideData>) => void
-  addSlide: (slide: SlideData) => void
-  removeSlide: (index: number) => void
-  setSlides: (slides: SlideData[]) => void
-  updateCarouselTheme: (theme: Partial<CarouselTheme>) => void
-  setCarouselEditor: (patch: Partial<CarouselEditor>) => void
-
   setPlatformConnections: (connections: AppState['platformConnections']) => void
   setVoiceProfile: (platform: Platform, profile: AppState['voiceProfiles'][Platform]) => void
   setSelectedModel: (model: string) => void
@@ -118,16 +74,7 @@ interface AppState {
 
 const DEFAULT_POST: CurrentPost = {
   id: null, content: '', platforms: ['linkedin'], mediaAssets: [],
-  carouselId: null, postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
-}
-
-const DEFAULT_THEME: CarouselTheme = {
-  primaryColor: '#0A66C2', backgroundColor: '#FFFFFF', textColor: '#1A1A1A',
-  font: 'Poppins', logoStoragePath: null, brandName: '', fontScale: 1.0, padding: 7,
-}
-
-const DEFAULT_CAROUSEL: CarouselEditor = {
-  id: null, title: '', slides: [], theme: DEFAULT_THEME, activeSlideIndex: 0, isDirty: false,
+  postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
 }
 
 const useAppStore = create<AppState>((set) => ({
@@ -135,7 +82,6 @@ const useAppStore = create<AppState>((set) => ({
   profileName: null,
   profileEmail: null,
   currentPost: { ...DEFAULT_POST },
-  carouselEditor: { ...DEFAULT_CAROUSEL },
   voiceProfiles: {},
   platformConnections: {},
   selectedModel: 'anthropic/claude-sonnet-4-5',
@@ -167,23 +113,6 @@ const useAppStore = create<AppState>((set) => ({
   reorderMediaAssets: (assets) => set((s) => ({ currentPost: { ...s.currentPost, mediaAssets: assets } })),
   setCurrentPost: (patch) => set((s) => ({ currentPost: { ...s.currentPost, ...patch } })),
   resetComposer: () => set({ currentPost: { ...DEFAULT_POST }, postScore: null, autocompleteText: '' }),
-
-  setActiveSlide: (index) => set((s) => ({ carouselEditor: { ...s.carouselEditor, activeSlideIndex: index } })),
-  updateSlide: (index, data) => set((s) => {
-    const slides = [...s.carouselEditor.slides]
-    slides[index] = { ...slides[index], ...data }
-    return { carouselEditor: { ...s.carouselEditor, slides, isDirty: true } }
-  }),
-  addSlide: (slide) => set((s) => ({
-    carouselEditor: { ...s.carouselEditor, slides: [...s.carouselEditor.slides, slide], isDirty: true },
-  })),
-  removeSlide: (index) => set((s) => {
-    const slides = s.carouselEditor.slides.filter((_, i) => i !== index)
-    return { carouselEditor: { ...s.carouselEditor, slides, activeSlideIndex: Math.min(index, slides.length - 1), isDirty: true } }
-  }),
-  setSlides: (slides) => set((s) => ({ carouselEditor: { ...s.carouselEditor, slides, isDirty: true } })),
-  updateCarouselTheme: (theme) => set((s) => ({ carouselEditor: { ...s.carouselEditor, theme: { ...s.carouselEditor.theme, ...theme }, isDirty: true } })),
-  setCarouselEditor: (patch) => set((s) => ({ carouselEditor: { ...s.carouselEditor, ...patch } })),
 
   setAuth: (patch) => set((s) => ({ auth: { ...s.auth, checked: true, ...patch } })),
   setProfileName:  (name)  => set({ profileName: name }),

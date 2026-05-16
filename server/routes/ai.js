@@ -121,7 +121,7 @@ router.post('/adapt', async (req, res, next) => {
 });
 
 // POST /api/ai/repurpose  { postId, action, model? }
-// action: 'longform' | 'x-thread' | 'reddit'  (carousel is handled in carousel route)
+// action: 'longform' | 'x-thread' | 'reddit'
 router.post('/repurpose', async (req, res, next) => {
   try {
     const { postId, action, model } = req.body;

@@ -24,7 +24,6 @@ CREATE TABLE posts (
   platform_post_ids JSONB,
   ai_generated BOOLEAN DEFAULT FALSE,
   voice_profile_id UUID REFERENCES voice_profiles(id),
-  carousel_id UUID,
   target_group JSONB,
   metadata JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -46,32 +45,6 @@ CREATE TABLE media_assets (
   alt_text TEXT,
   platform_media_ids JSONB,
   sort_order INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- LinkedIn carousels
-CREATE TABLE carousels (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  title TEXT NOT NULL,
-  slides JSONB NOT NULL,
-  theme JSONB,
-  pdf_storage_path TEXT,
-  slide_count INTEGER,
-  template_name TEXT,
-  ai_generated BOOLEAN DEFAULT FALSE,
-  voice_profile_id UUID REFERENCES voice_profiles(id),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Carousel templates (structure only)
-CREATE TABLE carousel_templates (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  name TEXT NOT NULL,
-  description TEXT,
-  slide_structure JSONB NOT NULL,
-  theme JSONB,
-  is_builtin BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -100,7 +73,6 @@ CREATE TABLE post_analytics (
   impressions INTEGER DEFAULT 0,
   clicks INTEGER DEFAULT 0,
   video_views INTEGER DEFAULT 0,
-  carousel_page_views JSONB,
   fetched_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(post_id, platform)
 );
@@ -149,68 +121,6 @@ CREATE TABLE publish_logs (
   attempted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── Seed Data ────────────────────────────────────────────────────────────────
-
-INSERT INTO carousel_templates (name, description, slide_structure, is_builtin) VALUES
-(
-  '5 Lessons',
-  'Share five key lessons you learned from a topic or experience.',
-  '[
-    {"order":1,"type":"cover"},
-    {"order":2,"type":"content"},
-    {"order":3,"type":"content"},
-    {"order":4,"type":"content"},
-    {"order":5,"type":"content"},
-    {"order":6,"type":"content"},
-    {"order":7,"type":"cta"}
-  ]',
-  true
-),
-(
-  'How I Did X',
-  'Walk through how you accomplished something step by step.',
-  '[
-    {"order":1,"type":"cover"},
-    {"order":2,"type":"content"},
-    {"order":3,"type":"content"},
-    {"order":4,"type":"content"},
-    {"order":5,"type":"content"},
-    {"order":6,"type":"stat"},
-    {"order":7,"type":"cta"}
-  ]',
-  true
-),
-(
-  'Myth vs Reality',
-  'Bust common misconceptions in your industry.',
-  '[
-    {"order":1,"type":"cover"},
-    {"order":2,"type":"quote"},
-    {"order":3,"type":"content"},
-    {"order":4,"type":"quote"},
-    {"order":5,"type":"content"},
-    {"order":6,"type":"quote"},
-    {"order":7,"type":"content"},
-    {"order":8,"type":"cta"}
-  ]',
-  true
-),
-(
-  'Step-by-Step Guide',
-  'Teach your audience a process from start to finish.',
-  '[
-    {"order":1,"type":"cover"},
-    {"order":2,"type":"content"},
-    {"order":3,"type":"content"},
-    {"order":4,"type":"content"},
-    {"order":5,"type":"content"},
-    {"order":6,"type":"content"},
-    {"order":7,"type":"stat"},
-    {"order":8,"type":"cta"}
-  ]',
-  true
-);
-
 -- ── App config (added Stage 8) ───────────────────────────────────────────────
 -- Stores server-side configuration that must survive deploys.
 -- Currently holds the bcrypt password hash set via the /signup page.
@@ -223,4 +133,3 @@ CREATE TABLE IF NOT EXISTS app_config (
 -- ── Storage Buckets ───────────────────────────────────────────────────────────
 -- Run these in the Supabase Storage section (or via API):
 --   bucket: postly-media    (private)
---   bucket: postly-carousels (private)

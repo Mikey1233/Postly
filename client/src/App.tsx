@@ -15,8 +15,8 @@ import {
   notifyTokenExpiringSoon,
 } from './lib/notifications'
 
-import Login         from './pages/Login'
-import SignUp        from './pages/SignUp'
+import Login             from './pages/Login'
+import SignUp            from './pages/SignUp'
 import Dashboard     from './pages/Dashboard'
 import Composer      from './pages/Composer'
 import Platforms     from './pages/Platforms'
@@ -25,10 +25,9 @@ import Groups        from './pages/Groups'
 import Settings      from './pages/Settings'
 
 // Lazy-loaded heavy pages
-const CarouselBuilder = lazy(() => import('./pages/CarouselBuilder'))
-const Calendar        = lazy(() => import('./pages/Calendar'))
-const Analytics       = lazy(() => import('./pages/Analytics'))
-const MediaLibrary    = lazy(() => import('./pages/MediaLibrary'))
+const Calendar     = lazy(() => import('./pages/Calendar'))
+const Analytics    = lazy(() => import('./pages/Analytics'))
+const MediaLibrary = lazy(() => import('./pages/MediaLibrary'))
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -50,8 +49,6 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   calendar: <Icon d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H18v-.008zm0 2.25h.008v.008H18V15z" />,
 
   analytics: <Icon d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />,
-
-  carousel: <Icon d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3" />,
 
   voice: <Icon d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />,
 
@@ -209,8 +206,7 @@ function Sidebar() {
         <NavItem to="/analytics" label="Analytics" iconKey="analytics" collapsed={collapsed} />
 
         <NavGroup label="LinkedIn" collapsed={collapsed}>
-          <NavItem to="/compose/carousel" label="Carousel Builder" iconKey="carousel" collapsed={collapsed} />
-          <NavItem to="/voice"            label="Voice Profile"    iconKey="voice"    collapsed={collapsed} />
+          <NavItem to="/voice" label="Voice Profile" iconKey="voice" collapsed={collapsed} />
         </NavGroup>
 
         <NavGroup label="Content" collapsed={collapsed}>
@@ -351,7 +347,6 @@ function AppShell() {
           <Routes>
             <Route path="/"                 element={<Dashboard />} />
             <Route path="/compose"          element={<Composer />} />
-            <Route path="/compose/carousel" element={<CarouselBuilder />} />
             <Route path="/calendar"         element={<Calendar />} />
             <Route path="/analytics"        element={<Analytics />} />
             <Route path="/platforms"        element={<Platforms />} />
@@ -393,8 +388,8 @@ export default function App() {
     <BrowserRouter>
       <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
       <Routes>
-        <Route path="/login"  element={<Login />} />
-        <Route path="/signup" element={<SignUp />} />
+        <Route path="/login"              element={<Login />} />
+        <Route path="/signup"             element={<SignUp />} />
         <Route path="/*" element={
           <RequireAuth>
             <AppShell />

@@ -87,22 +87,8 @@ async function getProfile(token) {
 }
 
 // ── Media upload (new REST API) ───────────────────────────────────────────────
-// LinkedIn deprecated /v2/assets?action=registerUpload for documents and images.
-// Use /rest/documents, /rest/images, and /rest/videos instead.
-
-// Documents (PDFs / carousel files)
-async function initializeDocumentUpload(token, ownerId) {
-  const res = await fetch(`${API_REST}/documents?action=initializeUpload`, {
-    method: 'POST',
-    headers: REST_HEADERS(token),
-    body: JSON.stringify({
-      initializeUploadRequest: { owner: `urn:li:person:${ownerId}` },
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`LinkedIn document upload init failed: ${JSON.stringify(data)}`);
-  return { uploadUrl: data.value.uploadUrl, documentUrn: data.value.document };
-}
+// LinkedIn deprecated /v2/assets?action=registerUpload for images.
+// Use /rest/images and /rest/videos instead.
 
 // Images
 async function initializeImageUpload(token, ownerId) {
@@ -155,11 +141,6 @@ async function uploadMedia(buffer, mimeType, token, conn) {
   if (!conn?.account_id) throw new Error('LinkedIn account_id missing on connection');
   const ownerId = conn.account_id;
 
-  if (mimeType === 'application/pdf') {
-    const { uploadUrl, documentUrn } = await initializeDocumentUpload(token, ownerId);
-    await uploadBinary(uploadUrl, buffer);
-    return documentUrn;
-  }
   if (mimeType.startsWith('video/')) {
     const { uploadUrl, videoUrn } = await initializeVideoUpload(token, ownerId, buffer.length);
     await uploadBinary(uploadUrl, buffer);
@@ -177,8 +158,7 @@ async function uploadMedia(buffer, mimeType, token, conn) {
 
 async function publishPost(post, mediaUrns, token, conn, mediaContext = {}) {
   const ownerUrn  = `urn:li:person:${conn.account_id}`;
-  const isDocument = mediaContext.isDocument === true;
-  const isVideo    = mediaContext.isVideo    === true;
+  const isVideo    = mediaContext.isVideo === true;
 
   const body = {
     author:       ownerUrn,
@@ -194,16 +174,12 @@ async function publishPost(post, mediaUrns, token, conn, mediaContext = {}) {
   };
 
   if (mediaUrns.length > 0) {
-    if (isDocument) {
-      body.content = {
-        media: { title: mediaContext.title || 'Document', id: mediaUrns[0] },
-      };
-    } else if (isVideo) {
+    if (isVideo) {
       body.content = { media: { id: mediaUrns[0] } };
     } else if (mediaUrns.length === 1) {
       body.content = { media: { id: mediaUrns[0] } };
     } else {
-      // Multi-image carousel
+      // Multi-image post
       body.content = {
         multiImage: {
           images: mediaUrns.map((id) => ({ id, altText: '' })),
@@ -238,7 +214,6 @@ module.exports = {
   exchangeCode,
   refreshToken,
   getProfile,
-  initializeDocumentUpload,
   initializeImageUpload,
   initializeVideoUpload,
   uploadBinary,

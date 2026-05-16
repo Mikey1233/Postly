@@ -32,13 +32,6 @@ export function useKeyboardShortcuts() {
         return
       }
 
-      // Ctrl+Shift+C — carousel builder
-      if (key === 'c' && e.shiftKey) {
-        e.preventDefault()
-        navigate('/compose/carousel')
-        return
-      }
-
       // Ctrl+Shift+A — focus AI chat input (Composer right panel)
       if (key === 'a' && e.shiftKey) {
         const el = document.querySelector<HTMLInputElement>('[data-ai-input]')

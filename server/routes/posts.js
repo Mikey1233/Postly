@@ -9,7 +9,7 @@ router.get('/scheduled', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/posts/history?page=1&limit=20&search=...&platform=linkedin&type=carousel&from=...&to=...&pillar=...
+// GET /api/posts/history?page=1&limit=20&search=...&platform=linkedin&type=image&from=...&to=...&pillar=...
 router.get('/history', async (req, res, next) => {
   try {
     const limit  = Math.min(Number(req.query.limit) || 50, 200);
@@ -56,20 +56,19 @@ router.post('/', async (req, res, next) => {
   try {
     const {
       content, platform, post_type = 'text', status = 'draft',
-      scheduled_at, ai_generated, voice_profile_id, carousel_id, target_group, metadata,
+      scheduled_at, ai_generated, voice_profile_id, target_group, metadata,
     } = req.body;
-    if (!content && post_type !== 'carousel') return res.status(400).json({ error: 'content required' });
+    if (!content) return res.status(400).json({ error: 'content required' });
     if (!Array.isArray(platform) || platform.length === 0) return res.status(400).json({ error: 'platform (array) required' });
 
     const post = await db.posts.create({
-      content:          content || '',
+      content,
       platform,
       post_type,
       status,
       scheduled_at:     scheduled_at || null,
       ai_generated:     !!ai_generated,
       voice_profile_id: voice_profile_id || null,
-      carousel_id:      carousel_id || null,
       target_group:     target_group || null,
       metadata:         metadata || null,
     });
@@ -81,7 +80,7 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const allowed = ['content', 'platform', 'post_type', 'status', 'scheduled_at',
-                     'voice_profile_id', 'carousel_id', 'target_group', 'metadata'];
+                     'voice_profile_id', 'target_group', 'metadata'];
     const patch = {};
     for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
     res.json(await db.posts.update(req.params.id, patch));

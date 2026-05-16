@@ -5,7 +5,6 @@ export interface PlatformLimit {
   maxImages: number
   maxVideoSizeBytes: number
   maxVideoDurationSeconds: number
-  supportsCarousel: boolean
   supportsGroups: boolean
 }
 
@@ -15,7 +14,6 @@ export const PLATFORM_LIMITS: Record<Platform, PlatformLimit> = {
     maxImages: 9,
     maxVideoSizeBytes: 5 * 1024 * 1024 * 1024,
     maxVideoDurationSeconds: 600,
-    supportsCarousel: true,
     supportsGroups: false,
   },
   facebook: {
@@ -23,7 +21,6 @@ export const PLATFORM_LIMITS: Record<Platform, PlatformLimit> = {
     maxImages: 10,
     maxVideoSizeBytes: 10 * 1024 * 1024 * 1024,
     maxVideoDurationSeconds: 14400,
-    supportsCarousel: true,
     supportsGroups: true,
   },
   x: {
@@ -31,7 +28,6 @@ export const PLATFORM_LIMITS: Record<Platform, PlatformLimit> = {
     maxImages: 4,
     maxVideoSizeBytes: 512 * 1024 * 1024,
     maxVideoDurationSeconds: 140,
-    supportsCarousel: false,
     supportsGroups: false,
   },
   reddit: {
@@ -39,7 +35,6 @@ export const PLATFORM_LIMITS: Record<Platform, PlatformLimit> = {
     maxImages: 20,
     maxVideoSizeBytes: 1024 * 1024 * 1024,
     maxVideoDurationSeconds: 900,
-    supportsCarousel: false,
     supportsGroups: true,
   },
 }

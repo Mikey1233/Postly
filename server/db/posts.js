@@ -91,15 +91,13 @@ module.exports = {
   },
 
   async getStats() {
-    const [published, scheduled, carousels] = await Promise.all([
+    const [published, scheduled] = await Promise.all([
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'scheduled'),
-      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('post_type', 'carousel'),
     ]);
     return {
       totalPosts:     published.count  ?? 0,
       scheduledPosts: scheduled.count  ?? 0,
-      totalCarousels: carousels.count  ?? 0,
     };
   },
 

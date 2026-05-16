@@ -362,7 +362,6 @@ export default function Composer() {
               { label: 'Score ↺',   onClick: () => scheduleScore(currentPost.content) },
               { label: 'Hooks',      onClick: generateHooks },
               { label: 'Repurpose',  onClick: () => setRepurposeModal(true) },
-              { label: 'Carousel ↗', onClick: () => navigate('/compose/carousel') },
             ].map(({ label, onClick }) => (
               <button key={label} onClick={onClick}
                 className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50">
