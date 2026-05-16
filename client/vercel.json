@@ -1,4 +1,9 @@
 {
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://postly-pusg.onrender.com"
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/.*).*)",
