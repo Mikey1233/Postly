@@ -144,11 +144,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Platform status */}
+      {/* Platform status — only platforms we can publish to */}
       <div>
         <h2 className="font-semibold text-gray-800 mb-3">Platforms</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {(['linkedin', 'x', 'facebook', 'reddit'] as Platform[]).map((p) => {
+        <div className="grid grid-cols-2 gap-3">
+          {(['linkedin', 'x'] as Platform[]).map((p) => {
             const conn = platformConnections[p]
             return (
               <div key={p} className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-2.5">

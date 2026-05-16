@@ -24,6 +24,7 @@ interface CurrentPost {
   id: string | null
   content: string
   platforms: Platform[]
+  voice: Platform | null
   mediaAssets: MediaAsset[]
   postType: 'text' | 'image' | 'video'
   pillarId: string | null
@@ -73,7 +74,7 @@ interface AppState {
 }
 
 const DEFAULT_POST: CurrentPost = {
-  id: null, content: '', platforms: ['linkedin'], mediaAssets: [],
+  id: null, content: '', platforms: ['linkedin'], voice: 'linkedin', mediaAssets: [],
   postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
 }
 

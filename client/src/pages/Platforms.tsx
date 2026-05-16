@@ -7,7 +7,10 @@ import type { Platform } from '../lib/platformLimits'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
-const PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+// Only LinkedIn and X support automated publishing via OAuth. Facebook and
+// Reddit remain as AI generation targets in the composer, but their API
+// restrictions make programmatic connection impractical — post manually.
+const PLATFORMS: Platform[] = ['linkedin', 'x']
 
 interface PlatformStatus {
   configured: boolean
@@ -99,6 +102,7 @@ export default function Platforms() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Connected Platforms</h1>
         <p className="text-sm text-gray-500 mt-1">Add your app credentials, then connect each platform via OAuth.</p>
+        <p className="text-xs text-gray-400 mt-1">Facebook and Reddit aren't connectable here — their APIs have too many restrictions. You can still generate Facebook/Reddit-style posts in the composer and copy them across manually.</p>
       </div>
 
       {PLATFORMS.map((platform) => {

@@ -21,7 +21,6 @@ import Dashboard     from './pages/Dashboard'
 import Composer      from './pages/Composer'
 import Platforms     from './pages/Platforms'
 import VoiceSetup    from './pages/VoiceSetup'
-import Groups        from './pages/Groups'
 import Settings      from './pages/Settings'
 
 // Lazy-loaded heavy pages
@@ -109,7 +108,11 @@ function LogoutIcon() {
 
 // ── Nav components ────────────────────────────────────────────────────────────
 
-const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+// Platforms we can actually connect to and publish on. Facebook and Reddit
+// stay supported as AI generation targets (see Composer & VoiceSetup) but are
+// not represented in connection status indicators.
+const CONNECTABLE_PLATFORMS: Platform[] = ['linkedin', 'x']
+const VOICE_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
 
 interface NavItemProps { to: string; label: string; iconKey: string; collapsed: boolean; end?: boolean }
 
@@ -210,7 +213,6 @@ function Sidebar() {
         </NavGroup>
 
         <NavGroup label="Content" collapsed={collapsed}>
-          <NavItem to="/groups" label="Groups"        iconKey="groups" collapsed={collapsed} />
           <NavItem to="/media"  label="Media Library" iconKey="media"  collapsed={collapsed} />
         </NavGroup>
 
@@ -245,7 +247,7 @@ function Sidebar() {
         </button>
 
         <div className={`flex gap-1.5 pt-1 ${collapsed ? 'flex-col items-center' : 'flex-wrap px-1'}`}>
-          {ALL_PLATFORMS.map((p) => {
+          {CONNECTABLE_PLATFORMS.map((p) => {
             const conn = connections[p]
             const connected = conn?.connected && conn?.state !== 'expired'
             return (
@@ -296,7 +298,7 @@ function AppShell() {
       setProfileName(data.name)
       setProfileEmail(data.email)
     }).catch(() => {})
-    ;(['linkedin', 'x', 'facebook', 'reddit'] as Platform[]).forEach(async (p) => {
+    VOICE_PLATFORMS.forEach(async (p) => {
       try {
         const { data } = await api.get(`/api/voice/${p}`)
         if (data?.system_prompt) setVoiceProfile(p, { systemPrompt: data.system_prompt, analysis: data.analysis })
@@ -351,7 +353,6 @@ function AppShell() {
             <Route path="/analytics"        element={<Analytics />} />
             <Route path="/platforms"        element={<Platforms />} />
             <Route path="/voice"            element={<VoiceSetup />} />
-            <Route path="/groups"           element={<Groups />} />
             <Route path="/media"            element={<MediaLibrary />} />
             <Route path="/settings"         element={<Settings />} />
           </Routes>

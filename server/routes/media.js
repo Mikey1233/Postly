@@ -9,7 +9,7 @@ const videoProc = require('../services/media/videoProcessor');
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10GB max (Facebook limit)
+  limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5GB max (LinkedIn limit)
 });
 
 function validatePlatformLimits(file, platforms) {

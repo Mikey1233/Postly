@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api, { streamSSE } from '../lib/api'
 import { PLATFORM_LIMITS, PLATFORM_LABELS, PLATFORM_COLORS } from '../lib/platformLimits'
@@ -9,7 +9,10 @@ import useAppStore from '../store/useAppStore'
 import MediaUploadZone from '../components/media/MediaUploadZone'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
-const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+// Voices can come from any of the 4 platforms the user has analysed.
+const VOICE_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+// We can only actually publish/schedule to LinkedIn + X.
+const PUBLISH_PLATFORMS: Platform[] = ['linkedin', 'x']
 
 interface ScoreData { hookStrength: number; clarity: number; structure: number; predictedEngagement: number; suggestions: string[] }
 interface AIMessage { role: 'user' | 'assistant'; content: string }
@@ -37,7 +40,7 @@ export default function Composer() {
   const {
     currentPost, setPostContent, togglePlatform, addMediaAsset, removeMediaAsset,
     setCurrentPost, resetComposer, selectedModel, setSelectedModel,
-    postScore, setPostScore, contentPillars,
+    postScore, setPostScore, contentPillars, voiceProfiles,
   } = useAppStore(
     useShallow((s) => ({
       currentPost:      s.currentPost,
@@ -52,8 +55,13 @@ export default function Composer() {
       postScore:        s.postScore,
       setPostScore:     s.setPostScore,
       contentPillars:   s.contentPillars,
+      voiceProfiles:    s.voiceProfiles,
     }))
   )
+
+  // Voices the user has actually saved
+  const availableVoices = VOICE_PLATFORMS.filter((p) => voiceProfiles[p]?.systemPrompt)
+  const activeVoice: Platform | null = currentPost.voice ?? availableVoices[0] ?? null
 
   const [models, setModels]         = useState<{ id: string; name: string }[]>([])
   const [ghostText, setGhostText]   = useState('')
@@ -77,9 +85,22 @@ export default function Composer() {
   const [repurposeResult, setRepurposeResult]   = useState('')
   const [repurposeLoading, setRepurposeLoading] = useState(false)
 
+  // Rewrite-in-voice
+  const [rewriting, setRewriting] = useState<Platform | null>(null)
+  const rewriteCtrl = useRef<AbortController | null>(null)
+
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
   }, [])
+
+  // If the stored voice is missing/unavailable (e.g. user just analysed their first voice),
+  // fall back to the first available one so AI calls have a voice context.
+  useEffect(() => {
+    if (!availableVoices.length) return
+    if (!currentPost.voice || !availableVoices.includes(currentPost.voice)) {
+      setCurrentPost({ voice: availableVoices[0] })
+    }
+  }, [availableVoices, currentPost.voice, setCurrentPost])
 
   const adjustHeight = () => {
     if (textareaRef.current) {
@@ -99,7 +120,7 @@ export default function Composer() {
         let suggestion = ''
         await streamSSE(
           '/api/ai/autocomplete',
-          { text: text.slice(-300), platform: currentPost.platforms[0] || 'linkedin', model: selectedModel },
+          { text: text.slice(-300), platform: activeVoice || 'linkedin', model: selectedModel },
           (chunk) => { suggestion += chunk; setGhostText(suggestion) },
           autocompleteCtrl.current.signal,
         )
@@ -107,18 +128,18 @@ export default function Composer() {
         if (!(err instanceof Error) || err.name !== 'AbortError') { /* silent */ }
       }
     }, 500)
-  }, [currentPost.platforms, selectedModel])
+  }, [activeVoice, selectedModel])
 
   const scheduleScore = useCallback((content: string) => {
     if (scoreTimer.current) clearTimeout(scoreTimer.current)
     if (content.length < 50) { setPostScore(null); return }
     scoreTimer.current = setTimeout(async () => {
       try {
-        const { data } = await api.post<ScoreData>('/api/ai/score', { content, platform: currentPost.platforms[0] || 'linkedin' })
+        const { data } = await api.post<ScoreData>('/api/ai/score', { content, platform: activeVoice || 'linkedin' })
         setPostScore(data)
       } catch { /* silent */ }
     }, 1500)
-  }, [currentPost.platforms, setPostScore])
+  }, [activeVoice, setPostScore])
 
   const handleContentChange = (val: string) => {
     setPostContent(val)
@@ -147,7 +168,7 @@ export default function Composer() {
     try {
       await streamSSE(
         '/api/ai/compose',
-        { topic: aiInput, platform: currentPost.platforms[0] || 'linkedin', model: selectedModel },
+        { topic: aiInput, platform: activeVoice || 'linkedin', model: selectedModel },
         (chunk) => {
           response += chunk
           setAIMessages((prev) => {
@@ -168,10 +189,44 @@ export default function Composer() {
     if (last) { setPostContent(last.content); setGhostText('') }
   }
 
+  // Switch the active voice. If there's existing content, stream a rewrite
+  // through /api/ai/rephrase using the selected voice's saved system prompt.
+  const selectVoice = async (voice: Platform) => {
+    if (rewriting) return
+    setCurrentPost({ voice })
+
+    const content = currentPost.content.trim()
+    if (!content) return
+
+    if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
+    setGhostText('')
+
+    setRewriting(voice)
+    rewriteCtrl.current = new AbortController()
+    let rewritten = ''
+    setPostContent('')
+    try {
+      await streamSSE(
+        '/api/ai/rephrase',
+        { content, platform: voice, model: selectedModel },
+        (chunk) => { rewritten += chunk; setPostContent(rewritten); adjustHeight() },
+        rewriteCtrl.current.signal,
+      )
+      scheduleScore(rewritten)
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || err.name !== 'AbortError') {
+        setPostContent(content) // restore on failure
+        toast.error('Rewrite failed')
+      }
+    } finally {
+      setRewriting(null)
+    }
+  }
+
   const generateHashtags = async () => {
     if (!currentPost.content) { toast.error('Write a post first'); return }
     try {
-      const { data } = await api.post('/api/ai/hashtags', { content: currentPost.content, platform: currentPost.platforms[0] })
+      const { data } = await api.post('/api/ai/hashtags', { content: currentPost.content, platform: activeVoice || 'linkedin' })
       setPostContent(currentPost.content + '\n\n' + (data.hashtags as string[]).join(' '))
       toast.success('Hashtags added')
     } catch { toast.error('Failed to generate hashtags') }
@@ -183,7 +238,7 @@ export default function Composer() {
     setHooksLoading(true)
     setHooksModal(true)
     try {
-      const { data } = await api.post('/api/ai/hooks', { content: currentPost.content, platform: currentPost.platforms[0] || 'linkedin' })
+      const { data } = await api.post('/api/ai/hooks', { content: currentPost.content, platform: activeVoice || 'linkedin' })
       setHooks(data.hooks || [])
     } catch { toast.error('Failed to generate hooks') }
     finally { setHooksLoading(false) }
@@ -203,7 +258,7 @@ export default function Composer() {
       let result = ''
       await streamSSE(
         '/api/ai/repurpose',
-        { content: currentPost.content, format: repurposeFormat, platform: currentPost.platforms[0] || 'linkedin', model: selectedModel },
+        { content: currentPost.content, format: repurposeFormat, platform: activeVoice || 'linkedin', model: selectedModel },
         (chunk) => { result += chunk; setRepurposeResult(result) },
       )
     } catch { toast.error('Failed to repurpose') }
@@ -224,6 +279,7 @@ export default function Composer() {
   }
 
   const schedule = async () => {
+    if (!currentPost.platforms.length) { toast.error('Pick a platform to schedule to'); return }
     if (!scheduleDate) { toast.error('Pick a date and time'); return }
     setScheduling(true)
     try {
@@ -241,8 +297,9 @@ export default function Composer() {
   }
 
   const postNow = async () => {
+    if (!currentPost.platforms.length) { toast.error('Pick a platform to post to'); return }
     if (!currentPost.id) await saveDraft()
-    if (!confirm('Post now to all selected platforms?')) return
+    if (!confirm(`Post now to ${currentPost.platforms.map((p) => PLATFORM_LABELS[p]).join(' + ')}?`)) return
     setPosting(true)
     try {
       await api.post(`/api/posts/${currentPost.id}/publish`, {})
@@ -260,21 +317,31 @@ export default function Composer() {
         {/* ── Left — Editor ─────────────────────────────────────────────────── */}
         <div className="flex-1 flex flex-col overflow-y-auto p-5 gap-4 border-r border-gray-200">
 
-          {/* Platform chips */}
-          <div className="flex gap-2 flex-wrap">
-            {ALL_PLATFORMS.map((p) => {
-              const active = currentPost.platforms.includes(p)
+          {/* Voice tabs — click to rewrite the post in that saved voice */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-400 shrink-0 uppercase tracking-wide">Voice:</span>
+            {availableVoices.length === 0 && (
+              <Link to="/voice" className="text-xs text-indigo-600 hover:underline">
+                Analyse a voice profile to start writing →
+              </Link>
+            )}
+            {availableVoices.map((p) => {
+              const active = activeVoice === p
+              const isRewriting = rewriting === p
               return (
                 <button
                   key={p}
-                  onClick={() => togglePlatform(p)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                  onClick={() => selectVoice(p)}
+                  disabled={!!rewriting}
+                  title={`Rewrite in ${PLATFORM_LABELS[p]} voice`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                     active ? 'text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
                   style={active ? { backgroundColor: PLATFORM_COLORS[p], borderColor: PLATFORM_COLORS[p] } : {}}
                 >
                   <PlatformIcon platform={p} size={14} className={active ? 'brightness-0 invert' : ''} />
-                  {PLATFORM_LABELS[p]}
+                  {PLATFORM_LABELS[p]} voice
+                  {isRewriting && <span className="ml-1 animate-pulse">…</span>}
                 </button>
               )
             })}
@@ -431,19 +498,45 @@ export default function Composer() {
       </div>
 
       {/* ── Bottom bar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-5 py-3 bg-white border-t border-gray-200">
+      <div className="flex items-center gap-3 px-5 py-3 bg-white border-t border-gray-200 flex-wrap">
+        {/* Publish targets — LinkedIn + X only */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-400 uppercase tracking-wide mr-1">Post to:</span>
+          {PUBLISH_PLATFORMS.map((p) => {
+            const active = currentPost.platforms.includes(p)
+            return (
+              <button
+                key={p}
+                onClick={() => togglePlatform(p)}
+                title={`${active ? 'Remove' : 'Add'} ${PLATFORM_LABELS[p]}`}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                  active ? 'text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                }`}
+                style={active ? { backgroundColor: PLATFORM_COLORS[p], borderColor: PLATFORM_COLORS[p] } : {}}
+              >
+                <PlatformIcon platform={p} size={12} className={active ? 'brightness-0 invert' : ''} />
+                {PLATFORM_LABELS[p]}
+              </button>
+            )
+          })}
+        </div>
+
         {/* data-shortcut lets Ctrl+S trigger save from useKeyboardShortcuts */}
         <button data-shortcut="save" onClick={saveDraft} disabled={saving}
-          className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60">
+          className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60 ml-auto">
           {saving ? 'Saving…' : 'Save Draft'}
         </button>
-        <button onClick={() => setScheduleModal(true)}
+        <button
+          onClick={() => {
+            if (!currentPost.platforms.length) { toast.error('Pick a platform to schedule to'); return }
+            setScheduleModal(true)
+          }}
           className="border border-indigo-200 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-50">
           Schedule
         </button>
         {/* data-shortcut="publish" lets Ctrl+Enter trigger post from anywhere */}
         <button data-shortcut="publish" onClick={postNow} disabled={posting || !currentPost.content}
-          className="btn-gradient text-white px-5 py-2 rounded-lg text-sm font-medium ml-auto disabled:opacity-60">
+          className="btn-gradient text-white px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-60">
           {posting ? 'Posting…' : 'Post Now'}
         </button>
       </div>

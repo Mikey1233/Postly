@@ -5,10 +5,8 @@ const db       = require('../db');
 
 const linkedin = require('../services/platforms/linkedin');
 const twitter  = require('../services/platforms/twitter');
-const facebook = require('../services/platforms/facebook');
-const reddit   = require('../services/platforms/reddit');
 
-const PLATFORMS = ['linkedin', 'x', 'facebook', 'reddit'];
+const PLATFORMS = ['linkedin', 'x'];
 
 // Derive the redirect URI from SERVER_URL so the user can copy it into the platform app console
 function getRedirectUri(platform) {
@@ -23,6 +21,9 @@ function getRedirectUri(platform) {
 router.get('/:platform/credentials', async (req, res, next) => {
   try {
     const { platform } = req.params;
+    if (!PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: `Unknown platform: ${platform}` });
+    }
     const configured = await db.platformCredentials.isSet(platform);
     res.json({ platform, configured, redirectUri: getRedirectUri(platform) });
   } catch (err) { next(err); }
@@ -47,10 +48,14 @@ router.post('/:platform/credentials', async (req, res, next) => {
 // DELETE /api/platforms/:platform/credentials  — remove app credentials (also disconnects)
 router.delete('/:platform/credentials', async (req, res, next) => {
   try {
-    await db.platformCredentials.remove(req.params.platform);
+    const { platform } = req.params;
+    if (!PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: `Unknown platform: ${platform}` });
+    }
+    await db.platformCredentials.remove(platform);
     // Also clear any stored OAuth tokens since they're now orphaned
-    await db.platformConnections.remove(req.params.platform).catch(() => {});
-    res.json({ removed: req.params.platform });
+    await db.platformConnections.remove(platform).catch(() => {});
+    res.json({ removed: platform });
   } catch (err) { next(err); }
 });
 
@@ -87,6 +92,9 @@ router.get('/status', async (_req, res, next) => {
 router.get('/:platform/auth', async (req, res, next) => {
   try {
     const { platform } = req.params;
+    if (!PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: `Unknown platform: ${platform}` });
+    }
     const creds = await db.platformCredentials.getDecrypted(platform);
     const redirectUri = getRedirectUri(platform);
     const state = crypto.randomBytes(16).toString('hex');
@@ -94,8 +102,6 @@ router.get('/:platform/auth', async (req, res, next) => {
     switch (platform) {
       case 'linkedin': url = linkedin.getAuthUrl(state, { ...creds, redirectUri }); break;
       case 'x':        url = twitter.getAuthUrl(state, { ...creds, redirectUri });  break;
-      case 'facebook': url = facebook.getAuthUrl(state, { ...creds, redirectUri }); break;
-      case 'reddit':   url = reddit.getAuthUrl(state, { ...creds, redirectUri });   break;
       default: return res.status(400).json({ error: `Unknown platform: ${platform}` });
     }
     res.redirect(url);
@@ -110,6 +116,10 @@ router.get('/:platform/callback', async (req, res, next) => {
 
     if (oauthError) {
       return res.redirect(`${process.env.FRONTEND_URL}/platforms?error=${encodeURIComponent(oauthError)}`);
+    }
+
+    if (!PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: `Unknown platform: ${platform}` });
     }
 
     const creds      = await db.platformCredentials.getDecrypted(platform);
@@ -140,31 +150,6 @@ router.get('/:platform/callback', async (req, res, next) => {
         });
         break;
       }
-      case 'facebook': {
-        const shortData = await facebook.exchangeCode(code, { ...creds, redirectUri });
-        const longData  = await facebook.getLongLivedToken(shortData.access_token, creds);
-        const profile   = await facebook.getProfile(longData.access_token);
-        await db.platformConnections.upsert('facebook', {
-          access_token:     encrypt(longData.access_token),
-          refresh_token:    null,
-          token_expires_at: longData.expires_in ? new Date(Date.now() + longData.expires_in * 1000).toISOString() : null,
-          account_id:       profile.id,
-          account_name:     profile.name,
-        });
-        break;
-      }
-      case 'reddit': {
-        const tokens  = await reddit.exchangeCode(code, { ...creds, redirectUri });
-        const profile = await reddit.getProfile(tokens.access_token);
-        await db.platformConnections.upsert('reddit', {
-          access_token:     encrypt(tokens.access_token),
-          refresh_token:    tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
-          token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
-          account_id:       profile.id,
-          account_name:     profile.name,
-        });
-        break;
-      }
       default:
         return res.status(400).json({ error: `Unknown platform: ${platform}` });
     }
@@ -176,41 +161,12 @@ router.get('/:platform/callback', async (req, res, next) => {
 // DELETE /api/platforms/:platform  — disconnect (remove OAuth tokens, keep app credentials)
 router.delete('/:platform', async (req, res, next) => {
   try {
-    await db.platformConnections.remove(req.params.platform);
-    res.json({ disconnected: req.params.platform });
-  } catch (err) { next(err); }
-});
-
-// GET /api/platforms/:platform/groups  — Facebook groups or Reddit subreddits
-router.get('/:platform/groups', async (req, res, next) => {
-  try {
     const { platform } = req.params;
-    const conn = await db.platformConnections.getByPlatform(platform);
-    if (!conn) return res.status(401).json({ error: `${platform} not connected` });
-
-    const { decrypt } = require('../middleware/tokenCrypto');
-    const token = decrypt(conn.access_token);
-    let groups = [];
-
-    switch (platform) {
-      case 'facebook': {
-        const raw = await facebook.getGroups(token);
-        groups = raw.map((g) => ({ group_id: g.id, name: g.name, member_count: g.member_count ?? null }));
-        await db.platformGroups.upsert('facebook', groups);
-        break;
-      }
-      case 'reddit': {
-        groups = await reddit.getSubreddits(token);
-        await db.platformGroups.upsert('reddit', groups);
-        break;
-      }
-      case 'linkedin':
-        groups = await linkedin.getGroups();
-        break;
-      default:
-        groups = [];
+    if (!PLATFORMS.includes(platform)) {
+      return res.status(400).json({ error: `Unknown platform: ${platform}` });
     }
-    res.json(groups);
+    await db.platformConnections.remove(platform);
+    res.json({ disconnected: platform });
   } catch (err) { next(err); }
 });
 

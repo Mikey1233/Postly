@@ -3,8 +3,6 @@ const sharp = require('sharp');
 const PLATFORM_IMAGE_SPECS = {
   linkedin: { maxWidth: 1200, maxHeight: 1200, quality: 90 },
   x:        { maxWidth: 4096, maxHeight: 4096, quality: 85 },
-  facebook: { maxWidth: 2048, maxHeight: 2048, quality: 90 },
-  reddit:   { maxWidth: 4000, maxHeight: 4000, quality: 85 },
 };
 
 async function processImageForPlatform(inputBuffer, platform) {

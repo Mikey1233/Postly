@@ -5,8 +5,6 @@ const db = require('../db');
 const platformServices = {
   linkedin: () => require('../services/platforms/linkedin'),
   x:        () => require('../services/platforms/twitter'),
-  facebook: () => require('../services/platforms/facebook'),
-  reddit:   () => require('../services/platforms/reddit'),
 };
 
 function requirePlatformAuth(platform) {

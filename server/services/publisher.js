@@ -5,10 +5,8 @@ const { decrypt }   = require('../middleware/tokenCrypto');
 
 const linkedin = require('./platforms/linkedin');
 const twitter  = require('./platforms/twitter');
-const facebook = require('./platforms/facebook');
-const reddit   = require('./platforms/reddit');
 
-const publishers = { linkedin, x: twitter, facebook, reddit };
+const publishers = { linkedin, x: twitter };
 
 // Resolve a usable token for a platform connection, refreshing if it's near expiry.
 async function getActiveToken(platform, conn) {
@@ -43,6 +41,9 @@ async function publishRegularPost(post, platform, conn, token, mediaAssets) {
 }
 
 async function publishToPlatform(post, platform, mediaAssets) {
+  if (!publishers[platform]) {
+    throw new Error(`${platform} publishing is not supported — use AI generation only and post manually`);
+  }
   const conn = await db.platformConnections.getByPlatform(platform);
   if (!conn) throw new Error(`${platform} not connected`);
   const { token, conn: liveConn } = await getActiveToken(platform, conn);

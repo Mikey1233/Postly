@@ -5,10 +5,8 @@ const path   = require('path');
 const crypto = require('crypto');
 
 const PLATFORM_VIDEO_LIMITS = {
-  linkedin: { maxDurationSec: 600,   maxSizeBytes: 5  * 1024 * 1024 * 1024 },
-  x:        { maxDurationSec: 140,   maxSizeBytes: 512 * 1024 * 1024       },
-  facebook: { maxDurationSec: 14400, maxSizeBytes: 10 * 1024 * 1024 * 1024 },
-  reddit:   { maxDurationSec: 900,   maxSizeBytes: 1  * 1024 * 1024 * 1024 },
+  linkedin: { maxDurationSec: 600, maxSizeBytes: 5  * 1024 * 1024 * 1024 },
+  x:        { maxDurationSec: 140, maxSizeBytes: 512 * 1024 * 1024       },
 };
 
 function formatBytes(n) {
