@@ -4,12 +4,14 @@ import linkedinIcon from '../../assets/linkedin.svg'
 import facebookIcon from '../../assets/round-facebook.svg'
 import redditIcon   from '../../assets/sharp-reddit.svg'
 import xIcon        from '../../assets/x-solid.svg'
+import gmailIcon    from '../../assets/gmail.svg'
 
 const ICONS: Record<Platform, string> = {
   linkedin: linkedinIcon,
   facebook: facebookIcon,
   reddit:   redditIcon,
   x:        xIcon,
+  gmail:    gmailIcon,
 }
 
 interface Props {

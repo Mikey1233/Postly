@@ -11,6 +11,7 @@ const aiSessions    = require('./aiSessions');
 const platformGroups = require('./platformGroups');
 const contentPillars = require('./contentPillars');
 const publishLogs   = require('./publishLogs');
+const emailRecipients = require('./emailRecipients');
 
 module.exports = {
   posts,
@@ -23,4 +24,5 @@ module.exports = {
   platformGroups,
   contentPillars,
   publishLogs,
+  emailRecipients,
 };

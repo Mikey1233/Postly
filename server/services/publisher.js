@@ -5,8 +5,44 @@ const { decrypt }   = require('../middleware/tokenCrypto');
 
 const linkedin = require('./platforms/linkedin');
 const twitter  = require('./platforms/twitter');
+const gmail    = require('./platforms/gmail');
 
-const publishers = { linkedin, x: twitter };
+const publishers = { linkedin, x: twitter, gmail };
+
+// Auto-derive a subject from the first non-empty line if the user didn't set one.
+function autoSubject(content) {
+  const firstLine = (content || '').split('\n').map((l) => l.trim()).find(Boolean) || '(no subject)';
+  return firstLine.slice(0, 120);
+}
+
+async function publishGmail(post, conn, token) {
+  const meta = post.metadata?.gmail || {};
+  const recipientIds = Array.isArray(meta.recipientIds) ? meta.recipientIds : [];
+  if (!recipientIds.length) {
+    throw new Error('No recipients selected for this Gmail post');
+  }
+  const recipients = await db.emailRecipients.getByIds(recipientIds);
+  if (!recipients.length) throw new Error('Selected recipients no longer exist');
+
+  const subject = (meta.subject?.trim()) || autoSubject(post.content);
+  const body    = post.content || '';
+  const fromEmail = conn.account_name;
+
+  const sent = [];
+  const failed = [];
+  for (const r of recipients) {
+    try {
+      const result = await gmail.sendOne({
+        to: r.email, subject, body, fromEmail, fromName: null,
+      }, token);
+      sent.push({ recipientId: r.id, email: r.email, messageId: result.id });
+    } catch (err) {
+      failed.push({ recipientId: r.id, email: r.email, error: err.message });
+    }
+  }
+  if (!sent.length) throw new Error(`All ${recipients.length} sends failed`);
+  return { id: sent.map((s) => s.messageId).join(','), sent, failed, subject };
+}
 
 // Resolve a usable token for a platform connection, refreshing if it's near expiry.
 async function getActiveToken(platform, conn) {
@@ -47,6 +83,7 @@ async function publishToPlatform(post, platform, mediaAssets) {
   const conn = await db.platformConnections.getByPlatform(platform);
   if (!conn) throw new Error(`${platform} not connected`);
   const { token, conn: liveConn } = await getActiveToken(platform, conn);
+  if (platform === 'gmail') return publishGmail(post, liveConn, token);
   return publishRegularPost(post, platform, liveConn, token, mediaAssets);
 }
 

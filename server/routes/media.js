@@ -143,12 +143,28 @@ router.get('/post/:postId', async (req, res, next) => {
 });
 
 // GET /api/media/library?page=1&limit=20
+// Enriches each row with signed_url (original) and thumbnail_url (if present)
+// so the client can render <img> tags directly — the bucket itself is private.
 router.get('/library', async (req, res, next) => {
   try {
     const limit  = Math.min(Number(req.query.limit) || 20, 100);
     const offset = (Number(req.query.page || 1) - 1) * limit;
     const assets = await db.media.getLibrary(limit, offset);
-    res.json(assets);
+
+    const SIGN_TTL = 3600; // 1 hour — long enough to browse, short enough to be safe
+    const withUrls = await Promise.all(assets.map(async (a) => {
+      const [signedUrl, thumbUrl] = await Promise.all([
+        a.storage_path
+          ? storage.getSignedUrl(storage.MEDIA_BUCKET, a.storage_path, SIGN_TTL).catch(() => null)
+          : null,
+        a.thumbnail_path
+          ? storage.getSignedUrl(storage.MEDIA_BUCKET, a.thumbnail_path, SIGN_TTL).catch(() => null)
+          : null,
+      ]);
+      return { ...a, signed_url: signedUrl, thumbnail_url: thumbUrl };
+    }));
+
+    res.json(withUrls);
   } catch (err) { next(err); }
 });
 

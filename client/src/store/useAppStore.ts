@@ -20,6 +20,14 @@ export interface ContentPillar {
   postCount: number
 }
 
+export interface EmailRecipient {
+  id: string
+  name: string
+  email: string
+  groupTag: string | null
+  notes: string | null
+}
+
 export type Tone =
   | 'default' | 'motivational' | 'educational' | 'sales' | 'inspirational'
   | 'storytelling' | 'humorous' | 'controversial' | 'thought-leadership'
@@ -48,6 +56,11 @@ interface CurrentPost {
   pillarId: string | null
   scheduledAt: string | null
   targetGroup: { platform: Platform; groupId: string; groupName: string } | null
+  // Gmail-specific — only meaningful when 'gmail' is in platforms.
+  // emailSubject is null when the user hasn't overridden it; the composer
+  // falls back to the first line of `content` at send time.
+  recipientIds: string[]
+  emailSubject: string | null
 }
 
 interface AuthState {
@@ -63,6 +76,7 @@ interface AppState {
   platformConnections: Partial<Record<Platform, { configured: boolean; connected: boolean; state?: string; accountName?: string; expiresAt?: string }>>
   selectedModel: string
   contentPillars: ContentPillar[]
+  emailRecipients: EmailRecipient[]
   darkMode: boolean
   isAILoading: boolean
   autocompleteText: string
@@ -87,6 +101,9 @@ interface AppState {
   removeVoiceProfile: (id: string) => void
   setSelectedModel: (model: string) => void
   setContentPillars: (pillars: ContentPillar[]) => void
+  setEmailRecipients: (recipients: EmailRecipient[]) => void
+  upsertEmailRecipient: (recipient: EmailRecipient) => void
+  removeEmailRecipient: (id: string) => void
   setAILoading: (loading: boolean) => void
   setAutocompleteText: (text: string) => void
   setPostScore: (score: AppState['postScore']) => void
@@ -96,6 +113,7 @@ interface AppState {
 const DEFAULT_POST: CurrentPost = {
   id: null, content: '', context: '', platforms: ['linkedin'], voice: null, tone: 'default',
   mediaAssets: [], postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
+  recipientIds: [], emailSubject: null,
 }
 
 const useAppStore = create<AppState>((set) => ({
@@ -107,6 +125,7 @@ const useAppStore = create<AppState>((set) => ({
   platformConnections: {},
   selectedModel: 'anthropic/claude-sonnet-4-5',
   contentPillars: [],
+  emailRecipients: [],
   // Read synchronously so the very first render already has the right value — no flash.
   darkMode: (() => {
     try {
@@ -148,6 +167,13 @@ const useAppStore = create<AppState>((set) => ({
   removeVoiceProfile: (id) => set((s) => ({ voiceProfiles: s.voiceProfiles.filter((v) => v.id !== id) })),
   setSelectedModel: (model) => set({ selectedModel: model }),
   setContentPillars: (pillars) => set({ contentPillars: pillars }),
+  setEmailRecipients: (recipients) => set({ emailRecipients: recipients }),
+  upsertEmailRecipient: (recipient) => set((s) => {
+    const idx = s.emailRecipients.findIndex((r) => r.id === recipient.id)
+    const next = idx === -1 ? [...s.emailRecipients, recipient] : s.emailRecipients.map((r) => r.id === recipient.id ? recipient : r)
+    return { emailRecipients: next.sort((a, b) => a.name.localeCompare(b.name)) }
+  }),
+  removeEmailRecipient: (id) => set((s) => ({ emailRecipients: s.emailRecipients.filter((r) => r.id !== id) })),
   setAILoading: (loading) => set({ isAILoading: loading }),
   setAutocompleteText: (text) => set({ autocompleteText: text }),
   setPostScore: (score) => set({ postScore: score }),

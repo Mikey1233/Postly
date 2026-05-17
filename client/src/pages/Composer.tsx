@@ -44,8 +44,16 @@ function serverError(err: unknown, fallback: string): string {
   return fallback
 }
 
-// We can only actually publish/schedule to LinkedIn + X.
-const PUBLISH_PLATFORMS: Platform[] = ['linkedin', 'x']
+// Platforms we can publish/schedule to. Gmail is a special case — it sends
+// the post as an email to chosen recipients (Subject + To picker shown below).
+const PUBLISH_PLATFORMS: Platform[] = ['linkedin', 'x', 'gmail']
+
+// First non-empty line of the post, used as the default email subject when
+// the user hasn't typed one. Trimmed to a reasonable subject length.
+function autoSubjectFrom(content: string): string {
+  const firstLine = content.split('\n').map((l) => l.trim()).find(Boolean) || ''
+  return firstLine.slice(0, 120)
+}
 
 const TONES: { value: Tone; label: string }[] = [
   { value: 'default',            label: 'Default' },
@@ -88,23 +96,33 @@ export default function Composer() {
     currentPost, setPostContent, togglePlatform, addMediaAsset, removeMediaAsset,
     setCurrentPost, resetComposer, selectedModel, setSelectedModel,
     postScore, setPostScore, contentPillars, voiceProfiles,
+    emailRecipients, setEmailRecipients,
   } = useAppStore(
     useShallow((s) => ({
-      currentPost:      s.currentPost,
-      setPostContent:   s.setPostContent,
-      togglePlatform:   s.togglePlatform,
-      addMediaAsset:    s.addMediaAsset,
-      removeMediaAsset: s.removeMediaAsset,
-      setCurrentPost:   s.setCurrentPost,
-      resetComposer:    s.resetComposer,
-      selectedModel:    s.selectedModel,
-      setSelectedModel: s.setSelectedModel,
-      postScore:        s.postScore,
-      setPostScore:     s.setPostScore,
-      contentPillars:   s.contentPillars,
-      voiceProfiles:    s.voiceProfiles,
+      currentPost:        s.currentPost,
+      setPostContent:     s.setPostContent,
+      togglePlatform:     s.togglePlatform,
+      addMediaAsset:      s.addMediaAsset,
+      removeMediaAsset:   s.removeMediaAsset,
+      setCurrentPost:     s.setCurrentPost,
+      resetComposer:      s.resetComposer,
+      selectedModel:      s.selectedModel,
+      setSelectedModel:   s.setSelectedModel,
+      postScore:          s.postScore,
+      setPostScore:       s.setPostScore,
+      contentPillars:     s.contentPillars,
+      voiceProfiles:      s.voiceProfiles,
+      emailRecipients:    s.emailRecipients,
+      setEmailRecipients: s.setEmailRecipients,
     }))
   )
+
+  // Gmail integration — only relevant when 'gmail' is in currentPost.platforms.
+  const gmailSelected = currentPost.platforms.includes('gmail')
+  const subjectValue = currentPost.emailSubject ?? autoSubjectFrom(currentPost.content)
+  const selectedRecipients = emailRecipients.filter((r) => currentPost.recipientIds.includes(r.id))
+  const [recipientPickerOpen, setRecipientPickerOpen] = useState(false)
+  const [recipientSearch, setRecipientSearch] = useState('')
 
   // All saved voices. The composer always renders the full list — user picks.
   const availableVoices = voiceProfiles
@@ -153,8 +171,30 @@ export default function Composer() {
   const [rewriting, setRewriting] = useState<string | null>(null)
   const rewriteCtrl = useRef<AbortController | null>(null)
 
+  // YouTube import: paste a URL, server fetches transcript, transcript becomes
+  // context, then we stream a compose into the editor.
+  const [youtubeModal, setYoutubeModal]             = useState(false)
+  const [youtubeUrl, setYoutubeUrl]                 = useState('')
+  const [youtubeInstruction, setYoutubeInstruction] = useState('')
+  const [youtubeLoading, setYoutubeLoading]         = useState(false)
+  const youtubeCtrl = useRef<AbortController | null>(null)
+
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
+  }, [])
+
+  // Load the recipient list once on mount so the Gmail picker is populated
+  // the moment the user toggles Gmail on. Skips if already loaded.
+  useEffect(() => {
+    if (emailRecipients.length > 0) return
+    api.get<Array<{ id: string; name: string; email: string; group_tag: string | null; notes: string | null }>>('/api/recipients')
+      .then(({ data }) => setEmailRecipients(
+        data.map((r) => ({ id: r.id, name: r.name, email: r.email, groupTag: r.group_tag, notes: r.notes }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      ))
+      .catch(() => { /* silent — page surfaces real errors */ })
+  // intentionally only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Load a saved draft (or any post) into the composer when ?id=<uuid> is set.
@@ -164,15 +204,18 @@ export default function Composer() {
     let cancelled = false
     api.get(`/api/posts/${draftIdParam}`).then(({ data }) => {
       if (cancelled) return
+      const gmailMeta = data.metadata?.gmail || {}
       setCurrentPost({
-        id:          data.id,
-        content:     data.content || '',
-        context:     data.context || '',
-        platforms:   data.platform || [],
-        postType:    data.post_type || 'text',
-        voice:       data.voice_profile_id || null,
-        scheduledAt: data.scheduled_at || null,
-        mediaAssets: (data.media_assets || []).map(dbToMediaAsset),
+        id:           data.id,
+        content:      data.content || '',
+        context:      data.context || '',
+        platforms:    data.platform || [],
+        postType:     data.post_type || 'text',
+        voice:        data.voice_profile_id || null,
+        scheduledAt:  data.scheduled_at || null,
+        mediaAssets:  (data.media_assets || []).map(dbToMediaAsset),
+        recipientIds: Array.isArray(gmailMeta.recipientIds) ? gmailMeta.recipientIds : [],
+        emailSubject: typeof gmailMeta.subject === 'string' ? gmailMeta.subject : null,
       })
     }).catch(() => toast.error('Failed to load draft'))
     return () => { cancelled = true }
@@ -449,6 +492,69 @@ export default function Composer() {
     toast.success('Hook added')
   }
 
+  const generateFromYoutube = async () => {
+    const url = youtubeUrl.trim()
+    if (!url) { toast.error('Paste a YouTube URL first'); return }
+    if (currentPost.content.trim() && !confirm('Replace your current draft with a post generated from this video?')) return
+
+    setYoutubeLoading(true)
+
+    let transcript = ''
+    try {
+      const { data } = await api.post<{ transcript: string; truncated: boolean }>(
+        '/api/youtube/transcript',
+        { url },
+      )
+      transcript = data.transcript || ''
+      if (!transcript) throw new Error('Empty transcript')
+      if (data.truncated) toast('Long video — using the first portion of the transcript', { icon: '✂️' })
+    } catch (err) {
+      toast.error(serverError(err, 'Failed to fetch transcript'))
+      setYoutubeLoading(false)
+      return
+    }
+
+    // Save the transcript as the post's context so follow-up AI edits stay grounded.
+    setCurrentPost({ context: transcript })
+
+    // Reset the editor and stream the generated draft in.
+    if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
+    setGhostText('')
+    setPostContent('')
+    setYoutubeModal(false)
+
+    const instruction = youtubeInstruction.trim()
+      || `Write a ${activePlatform} post based on this YouTube video. Surface the most useful insight or takeaway and make it stand on its own — don't reference "the video" unless it strengthens the hook.`
+
+    youtubeCtrl.current = new AbortController()
+    let result = ''
+    try {
+      await streamSSE(
+        '/api/ai/compose',
+        {
+          topic: instruction,
+          platform: activePlatform,
+          voiceId:  activeVoice?.id,
+          model:    selectedModel,
+          tone:     currentPost.tone,
+          context:  transcript,
+        },
+        (chunk) => { result += chunk; setPostContent(result); adjustHeight() },
+        youtubeCtrl.current.signal,
+      )
+      scheduleScore(result)
+      toast.success('Post generated from video')
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || err.name !== 'AbortError') {
+        toast.error('Generation failed')
+      }
+    } finally {
+      setYoutubeLoading(false)
+      setYoutubeUrl('')
+      setYoutubeInstruction('')
+    }
+  }
+
   const generateRepurpose = async () => {
     if (!currentPost.content.trim()) { toast.error('Write some content first'); return }
     setRepurposeLoading(true)
@@ -464,17 +570,42 @@ export default function Composer() {
     finally { setRepurposeLoading(false) }
   }
 
+  // Build the gmail block for posts.metadata when Gmail is selected.
+  // Skipped when Gmail isn't a target so we don't bloat unrelated drafts.
+  const buildMetadata = (): Record<string, unknown> | null => {
+    if (!gmailSelected) return null
+    return {
+      gmail: {
+        recipientIds: currentPost.recipientIds,
+        subject:      (currentPost.emailSubject ?? autoSubjectFrom(currentPost.content)) || null,
+      },
+    }
+  }
+
+  // Single place to reject a save/publish when Gmail is selected but the
+  // required Gmail fields aren't ready. Returns true if we should bail out.
+  const blockedByGmailGate = ({ requireRecipients }: { requireRecipients: boolean }): boolean => {
+    if (!gmailSelected) return false
+    if (requireRecipients && currentPost.recipientIds.length === 0) {
+      toast.error('Pick at least one recipient for the Gmail send')
+      return true
+    }
+    return false
+  }
+
   const saveDraft = async ({ silent = false }: { silent?: boolean } = {}): Promise<string | null> => {
     if (!currentPost.content.trim()) { toast.error('Write something first'); return null }
     if (!currentPost.platforms.length) { toast.error('Pick at least one platform'); return null }
     setSaving(true)
     try {
+      const metadata = buildMetadata()
       if (currentPost.id) {
         await api.put(`/api/posts/${currentPost.id}`, {
           content: currentPost.content, platform: currentPost.platforms,
           post_type: currentPost.postType,
           voice_profile_id: currentPost.voice || null,
           context: currentPost.context || null,
+          metadata,
         })
         if (!silent) toast.success('Draft saved')
         return currentPost.id
@@ -484,6 +615,7 @@ export default function Composer() {
         status: 'draft', post_type: currentPost.postType,
         voice_profile_id: currentPost.voice || null,
         context: currentPost.context || null,
+        metadata,
       })
       setCurrentPost({ id: data.id })
       if (!silent) toast.success('Draft saved')
@@ -498,12 +630,14 @@ export default function Composer() {
   const schedule = async () => {
     if (!currentPost.platforms.length) { toast.error('Pick a platform to schedule to'); return }
     if (!scheduleDate) { toast.error('Pick a date and time'); return }
+    if (blockedByGmailGate({ requireRecipients: true })) return
     setScheduling(true)
     try {
       const postData = {
         content: currentPost.content, platform: currentPost.platforms,
         status: 'scheduled', scheduled_at: new Date(scheduleDate).toISOString(),
         post_type: currentPost.postType,
+        metadata: buildMetadata(),
       }
       if (currentPost.id) await api.put(`/api/posts/${currentPost.id}`, postData)
       else { const { data } = await api.post('/api/posts', postData); setCurrentPost({ id: data.id }) }
@@ -515,7 +649,10 @@ export default function Composer() {
 
   const postNow = async () => {
     if (!currentPost.platforms.length) { toast.error('Pick a platform to post to'); return }
-    if (!confirm(`Post now to ${currentPost.platforms.map((p) => PLATFORM_LABELS[p]).join(' + ')}?`)) return
+    if (blockedByGmailGate({ requireRecipients: true })) return
+    const targetSummary = currentPost.platforms.map((p) => PLATFORM_LABELS[p]).join(' + ')
+    const gmailSuffix = gmailSelected ? ` (Gmail → ${currentPost.recipientIds.length} recipient${currentPost.recipientIds.length === 1 ? '' : 's'})` : ''
+    if (!confirm(`Post now to ${targetSummary}${gmailSuffix}?`)) return
     const id = currentPost.id || await saveDraft({ silent: true })
     if (!id) return
     setPosting(true)
@@ -529,11 +666,11 @@ export default function Composer() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* ── Left — Editor ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-y-auto scrollbar-slim p-5 gap-4 border-r border-gray-200">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto scrollbar-slim p-5 gap-4 border-r border-gray-200">
 
           {/* Voice picker — click a saved voice to rewrite the post in it */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -691,6 +828,147 @@ export default function Composer() {
             />
           </div>
 
+          {/* Gmail panel — Subject + Recipient picker. Visible only when Gmail
+              is one of the selected publish targets. */}
+          {gmailSelected && (
+            <div className="border border-rose-200 bg-rose-50/40 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 flex items-center gap-2">
+                  <PlatformIcon platform="gmail" size={14} />
+                  Email send
+                </p>
+                <Link to="/recipients" className="text-[10px] text-rose-700/70 hover:underline">
+                  Manage recipients →
+                </Link>
+              </div>
+
+              {/* Subject */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  value={subjectValue}
+                  onChange={(e) => setCurrentPost({ emailSubject: e.target.value })}
+                  placeholder="(uses first line of your post)"
+                  className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                />
+                {currentPost.emailSubject !== null && (
+                  <button
+                    onClick={() => setCurrentPost({ emailSubject: null })}
+                    className="text-[10px] text-gray-400 hover:text-gray-600"
+                  >
+                    Reset to first line
+                  </button>
+                )}
+              </div>
+
+              {/* Recipients */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                    To {selectedRecipients.length > 0 && (
+                      <span className="text-gray-400 normal-case font-normal ml-1">
+                        ({selectedRecipients.length} selected)
+                      </span>
+                    )}
+                  </label>
+                  <button
+                    onClick={() => setRecipientPickerOpen((o) => !o)}
+                    className="text-[10px] text-rose-700 hover:underline"
+                  >
+                    {recipientPickerOpen ? 'Close' : selectedRecipients.length ? 'Edit' : '+ Add'}
+                  </button>
+                </div>
+
+                {selectedRecipients.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">
+                    {emailRecipients.length === 0
+                      ? <>No recipients yet. <Link to="/recipients" className="text-rose-700 hover:underline">Add one →</Link></>
+                      : 'No one selected yet — click + Add'}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedRecipients.map((r) => (
+                      <span
+                        key={r.id}
+                        className="inline-flex items-center gap-1.5 bg-white border border-rose-200 rounded-full pl-2.5 pr-1 py-0.5 text-xs"
+                      >
+                        <span className="text-gray-700">{r.name}</span>
+                        <span className="text-gray-400 text-[10px]">{r.email}</span>
+                        <button
+                          onClick={() => setCurrentPost({ recipientIds: currentPost.recipientIds.filter((id) => id !== r.id) })}
+                          title="Remove"
+                          className="w-4 h-4 rounded-full text-gray-400 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center"
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {recipientPickerOpen && emailRecipients.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-2 mt-1.5 space-y-1.5">
+                    <input
+                      value={recipientSearch}
+                      onChange={(e) => setRecipientSearch(e.target.value)}
+                      placeholder="Search by name, email, tag…"
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-300"
+                    />
+                    <div className="max-h-48 overflow-y-auto scrollbar-slim space-y-0.5">
+                      {emailRecipients
+                        .filter((r) => {
+                          if (!recipientSearch.trim()) return true
+                          const s = recipientSearch.toLowerCase()
+                          return r.name.toLowerCase().includes(s)
+                            || r.email.toLowerCase().includes(s)
+                            || (r.groupTag || '').toLowerCase().includes(s)
+                        })
+                        .map((r) => {
+                          const checked = currentPost.recipientIds.includes(r.id)
+                          return (
+                            <label
+                              key={r.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 cursor-pointer text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...currentPost.recipientIds, r.id]
+                                    : currentPost.recipientIds.filter((id) => id !== r.id)
+                                  setCurrentPost({ recipientIds: next })
+                                }}
+                                className="accent-rose-600"
+                              />
+                              <span className="text-gray-800 font-medium">{r.name}</span>
+                              <span className="text-gray-400">{r.email}</span>
+                              {r.groupTag && (
+                                <span className="ml-auto text-[10px] bg-indigo-50 text-indigo-700 rounded-full px-1.5 py-0.5">
+                                  {r.groupTag}
+                                </span>
+                              )}
+                            </label>
+                          )
+                        })}
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-100 text-[10px] text-gray-400">
+                      <button
+                        onClick={() => setCurrentPost({ recipientIds: emailRecipients.map((r) => r.id) })}
+                        className="hover:text-gray-700"
+                      >Select all</button>
+                      <button
+                        onClick={() => setCurrentPost({ recipientIds: [] })}
+                        className="hover:text-gray-700"
+                      >Clear</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Textarea */}
           <div className="relative">
             <textarea
@@ -750,10 +1028,11 @@ export default function Composer() {
           {/* Toolbar */}
           <div className="flex gap-2 flex-wrap">
             {[
-              { label: 'Hashtags',   onClick: generateHashtags },
-              { label: 'Score ↺',   onClick: () => scheduleScore(currentPost.content) },
-              { label: 'Hooks',      onClick: generateHooks },
-              { label: 'Repurpose',  onClick: () => setRepurposeModal(true) },
+              { label: 'Hashtags',     onClick: generateHashtags },
+              { label: 'Score ↺',     onClick: () => scheduleScore(currentPost.content) },
+              { label: 'Hooks',        onClick: generateHooks },
+              { label: 'From YouTube', onClick: () => setYoutubeModal(true) },
+              { label: 'Repurpose',    onClick: () => setRepurposeModal(true) },
             ].map(({ label, onClick }) => (
               <button key={label} onClick={onClick}
                 className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50">
@@ -767,7 +1046,7 @@ export default function Composer() {
         {/* Three zones so the score card never pushes the input out of view:
             top (model select) and bottom (input + score) are shrink-0;
             the middle area takes whatever's left and scrolls on its own. */}
-        <div className="w-80 shrink-0 flex flex-col bg-gray-50 overflow-hidden">
+        <div className="w-80 shrink-0 min-h-0 flex flex-col bg-gray-50 overflow-hidden">
           <div className="p-5 pb-3 shrink-0">
             <select
               value={selectedModel}
@@ -936,6 +1215,78 @@ export default function Composer() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── YouTube → Post modal ────────────────────────────────────────────── */}
+      {youtubeModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-[480px] space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Generate from YouTube</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  We'll grab the transcript and use it as context for your post.
+                </p>
+              </div>
+              <button
+                onClick={() => { if (!youtubeLoading) setYoutubeModal(false) }}
+                disabled={youtubeLoading}
+                className="text-gray-400 hover:text-gray-600 text-lg leading-none disabled:opacity-40"
+              >✕</button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                YouTube URL
+              </label>
+              <input
+                type="url"
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !youtubeLoading) generateFromYoutube() }}
+                placeholder="https://www.youtube.com/watch?v=…"
+                disabled={youtubeLoading}
+                autoFocus
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Instruction <span className="text-gray-400 normal-case font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={youtubeInstruction}
+                onChange={(e) => setYoutubeInstruction(e.target.value)}
+                placeholder={`e.g. "Pull the 3 most counter-intuitive ideas and write a hook-led ${activePlatform} post"`}
+                disabled={youtubeLoading}
+                rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none disabled:bg-gray-100"
+              />
+            </div>
+
+            <p className="text-[10px] text-gray-400">
+              Transcript is saved to the Context field so follow-up AI edits stay grounded in the video.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                onClick={generateFromYoutube}
+                disabled={youtubeLoading || !youtubeUrl.trim()}
+                className="flex-1 btn-gradient text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60"
+              >
+                {youtubeLoading ? 'Fetching transcript…' : 'Generate Post'}
+              </button>
+              <button
+                onClick={() => setYoutubeModal(false)}
+                disabled={youtubeLoading}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

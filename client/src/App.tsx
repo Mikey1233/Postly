@@ -22,6 +22,7 @@ import Composer      from './pages/Composer'
 import Drafts        from './pages/Drafts'
 import Platforms     from './pages/Platforms'
 import VoiceSetup    from './pages/VoiceSetup'
+import Recipients    from './pages/Recipients'
 import Settings      from './pages/Settings'
 
 // Lazy-loaded heavy pages
@@ -114,7 +115,7 @@ function LogoutIcon() {
 // Platforms we can actually connect to and publish on. Facebook and Reddit
 // stay supported as AI generation targets (see Composer & VoiceSetup) but are
 // not represented in connection status indicators.
-const CONNECTABLE_PLATFORMS: Platform[] = ['linkedin', 'x']
+const CONNECTABLE_PLATFORMS: Platform[] = ['linkedin', 'x', 'gmail']
 
 interface NavItemProps { to: string; label: string; iconKey: string; collapsed: boolean; end?: boolean }
 
@@ -216,7 +217,8 @@ function Sidebar() {
         </NavGroup>
 
         <NavGroup label="Content" collapsed={collapsed}>
-          <NavItem to="/media"  label="Media Library" iconKey="media"  collapsed={collapsed} />
+          <NavItem to="/media"      label="Media Library" iconKey="media"  collapsed={collapsed} />
+          <NavItem to="/recipients" label="Recipients"    iconKey="groups" collapsed={collapsed} />
         </NavGroup>
 
         <NavGroup label="Account" collapsed={collapsed}>
@@ -291,6 +293,7 @@ function AppShell() {
   const setVoiceProfiles       = useAppStore((s) => s.setVoiceProfiles)
   const setProfileName         = useAppStore((s) => s.setProfileName)
   const setProfileEmail        = useAppStore((s) => s.setProfileEmail)
+  const setContentPillars      = useAppStore((s) => s.setContentPillars)
   const platformConnections    = useAppStore((s) => s.platformConnections)
   const seenPostStatus = useRef<Record<string, string>>({})
 
@@ -313,7 +316,15 @@ function AppShell() {
           isDefault: !!row.is_default,
         })))
     }).catch(() => {})
-  }, [setPlatformConnections, setVoiceProfiles, setProfileName, setProfileEmail])
+    api.get<Array<{ id: string; name: string; color: string | null; post_count: number | null }>>('/api/pillars').then(({ data }) => {
+      setContentPillars(data.map((r) => ({
+        id: r.id,
+        name: r.name,
+        color: r.color || '#3B82F6',
+        postCount: r.post_count ?? 0,
+      })))
+    }).catch(() => {})
+  }, [setPlatformConnections, setVoiceProfiles, setProfileName, setProfileEmail, setContentPillars])
 
   // Token-expiry OS notifications — once per session per platform
   useEffect(() => {
@@ -351,7 +362,7 @@ function AppShell() {
   }, [navigate])
 
   return (
-    <div className="flex h-full overflow-hidden bg-gray-50 text-gray-900">
+    <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900">
       <Sidebar />
       <main className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
         <Suspense fallback={<PageLoader />}>
@@ -364,6 +375,7 @@ function AppShell() {
             <Route path="/platforms"        element={<Platforms />} />
             <Route path="/voice"            element={<VoiceSetup />} />
             <Route path="/media"            element={<MediaLibrary />} />
+            <Route path="/recipients"       element={<Recipients />} />
             <Route path="/settings"         element={<Settings />} />
           </Routes>
         </Suspense>

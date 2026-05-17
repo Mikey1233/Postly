@@ -23,7 +23,10 @@ app.use('/api/posts',     requireAuth, require('./routes/posts'));
 app.use('/api/platforms', requireAuth, require('./routes/platforms'));
 app.use('/api/voice',     requireAuth, require('./routes/voice'));
 app.use('/api/media',     requireAuth, require('./routes/media'));
-app.use('/api/schedule',  requireAuth, require('./routes/schedule'));
+app.use('/api/schedule',   requireAuth, require('./routes/schedule'));
+app.use('/api/youtube',    requireAuth, require('./routes/youtube'));
+app.use('/api/recipients', requireAuth, require('./routes/emailRecipients'));
+app.use('/api/pillars',    requireAuth, require('./routes/contentPillars'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

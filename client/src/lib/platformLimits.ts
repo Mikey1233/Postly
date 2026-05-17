@@ -1,4 +1,4 @@
-export type Platform = 'linkedin' | 'facebook' | 'x' | 'reddit'
+export type Platform = 'linkedin' | 'facebook' | 'x' | 'reddit' | 'gmail'
 
 export interface PlatformLimit {
   characters: number | null
@@ -37,6 +37,13 @@ export const PLATFORM_LIMITS: Record<Platform, PlatformLimit> = {
     maxVideoDurationSeconds: 900,
     supportsGroups: true,
   },
+  gmail: {
+    characters: null,
+    maxImages: 0,
+    maxVideoSizeBytes: 0,
+    maxVideoDurationSeconds: 0,
+    supportsGroups: false,
+  },
 }
 
 export function getLimit<K extends keyof PlatformLimit>(
@@ -72,6 +79,7 @@ export const PLATFORM_COLORS: Record<Platform, string> = {
   x: '#000000',
   facebook: '#1877F2',
   reddit: '#FF4500',
+  gmail: '#EA4335',
 }
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
@@ -79,4 +87,5 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   x: 'X',
   facebook: 'Facebook',
   reddit: 'Reddit',
+  gmail: 'Gmail',
 }

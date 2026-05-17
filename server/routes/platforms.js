@@ -5,8 +5,9 @@ const db       = require('../db');
 
 const linkedin = require('../services/platforms/linkedin');
 const twitter  = require('../services/platforms/twitter');
+const gmail    = require('../services/platforms/gmail');
 
-const PLATFORMS = ['linkedin', 'x'];
+const PLATFORMS = ['linkedin', 'x', 'gmail'];
 
 // Derive the redirect URI from SERVER_URL so the user can copy it into the platform app console
 function getRedirectUri(platform) {
@@ -102,6 +103,7 @@ router.get('/:platform/auth', async (req, res, next) => {
     switch (platform) {
       case 'linkedin': url = linkedin.getAuthUrl(state, { ...creds, redirectUri }); break;
       case 'x':        url = twitter.getAuthUrl(state, { ...creds, redirectUri });  break;
+      case 'gmail':    url = gmail.getAuthUrl(state, { ...creds, redirectUri });    break;
       default: return res.status(400).json({ error: `Unknown platform: ${platform}` });
     }
     res.redirect(url);
@@ -147,6 +149,18 @@ router.get('/:platform/callback', async (req, res, next) => {
           token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
           account_id:       profile.id,
           account_name:     profile.username,
+        });
+        break;
+      }
+      case 'gmail': {
+        const tokens  = await gmail.exchangeCode(code, { ...creds, redirectUri });
+        const profile = await gmail.getProfile(tokens.access_token);
+        await db.platformConnections.upsert('gmail', {
+          access_token:     encrypt(tokens.access_token),
+          refresh_token:    tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
+          token_expires_at: tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null,
+          account_id:       profile.sub,
+          account_name:     profile.email,
         });
         break;
       }

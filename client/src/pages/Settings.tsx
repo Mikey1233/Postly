@@ -8,6 +8,11 @@ import PlatformIcon from '../components/ui/PlatformIcon'
 
 interface Pillar { id: string; name: string; color: string; postCount: number }
 
+interface PillarRow { id: string; name: string; color: string | null; post_count: number | null }
+function rowToPillar(r: PillarRow): Pillar {
+  return { id: r.id, name: r.name, color: r.color || '#3B82F6', postCount: r.post_count ?? 0 }
+}
+
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4']
 
 export default function Settings() {
@@ -39,6 +44,13 @@ export default function Settings() {
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
     api.get('/api/posts/history').catch(() => {}) // warm up
+    api.get<PillarRow[]>('/api/pillars').then(({ data }) => {
+      const next = data.map(rowToPillar)
+      setPillars(next)
+      setContentPillars(next)
+    }).catch(() => { /* silent — empty list is fine */ })
+  // setContentPillars is stable from Zustand; intentionally run once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const saveProfile = async () => {
@@ -104,9 +116,11 @@ export default function Settings() {
   const addPillar = async () => {
     if (!newPillar.name.trim()) { toast.error('Enter a pillar name'); return }
     try {
-      const { data } = await api.post('/api/posts', { /* this would be a content pillars route */ }).catch(() => ({ data: { id: Date.now().toString(), ...newPillar, postCount: 0 } }))
-      const added = { id: data.id, name: newPillar.name, color: newPillar.color, postCount: 0 }
-      const updated = [...pillars, added]
+      const { data } = await api.post<PillarRow>('/api/pillars', {
+        name:  newPillar.name.trim(),
+        color: newPillar.color,
+      })
+      const updated = [...pillars, rowToPillar(data)]
       setPillars(updated)
       setContentPillars(updated)
       setNewPillar({ name: '', color: COLORS[pillars.length % COLORS.length] })
@@ -114,10 +128,36 @@ export default function Settings() {
     } catch { toast.error('Failed to add pillar') }
   }
 
-  const removePillar = (id: string) => {
+  const renamePillar = async (id: string, name: string) => {
+    const trimmed = name.trim()
+    const original = pillars.find((p) => p.id === id)
+    if (!original || trimmed === original.name) return
+    if (!trimmed) { toast.error('Pillar name required'); return }
+    // optimistic update; revert on failure
+    const optimistic = pillars.map((p) => p.id === id ? { ...p, name: trimmed } : p)
+    setPillars(optimistic)
+    setContentPillars(optimistic)
+    try {
+      await api.put(`/api/pillars/${id}`, { name: trimmed })
+    } catch {
+      toast.error('Failed to rename pillar')
+      setPillars(pillars)
+      setContentPillars(pillars)
+    }
+  }
+
+  const removePillar = async (id: string) => {
+    const previous = pillars
     const updated = pillars.filter((p) => p.id !== id)
     setPillars(updated)
     setContentPillars(updated)
+    try {
+      await api.delete(`/api/pillars/${id}`)
+    } catch {
+      toast.error('Failed to delete pillar')
+      setPillars(previous)
+      setContentPillars(previous)
+    }
   }
 
   return (
@@ -187,7 +227,8 @@ export default function Settings() {
               <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: pillar.color }} />
               {editingPillar === pillar.id ? (
                 <input defaultValue={pillar.name} autoFocus
-                  onBlur={(e) => { setPillars((prev) => prev.map((p) => p.id === pillar.id ? { ...p, name: e.target.value } : p)); setEditingPillar(null) }}
+                  onBlur={(e) => { renamePillar(pillar.id, e.target.value); setEditingPillar(null) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                   className="flex-1 text-sm border-b border-gray-300 focus:outline-none"
                 />
               ) : (

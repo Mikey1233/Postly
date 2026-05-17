@@ -7,10 +7,11 @@ import type { Platform } from '../lib/platformLimits'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
-// Only LinkedIn and X support automated publishing via OAuth. Facebook and
-// Reddit remain as AI generation targets in the composer, but their API
-// restrictions make programmatic connection impractical — post manually.
-const PLATFORMS: Platform[] = ['linkedin', 'x']
+// Connectable platforms. LinkedIn + X publish to a public feed; Gmail
+// "publishes" by sending the post as an email to a chosen list of recipients
+// (managed on the Recipients page). Facebook and Reddit remain AI-generation
+// targets in the composer with no programmatic publishing.
+const PLATFORMS: Platform[] = ['linkedin', 'x', 'gmail']
 
 interface PlatformStatus {
   configured: boolean

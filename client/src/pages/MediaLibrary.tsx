@@ -4,7 +4,46 @@ import api from '../lib/api'
 import { formatDate } from '../lib/utils'
 
 type MediaType = 'image' | 'video' | 'gif'
-interface Asset { id: string; type: MediaType; filename: string; storagePath: string; mimeType: string; sizeBytes: number; altText: string | null; createdAt: string }
+interface Asset {
+  id: string
+  type: MediaType
+  filename: string
+  storagePath: string
+  mimeType: string
+  sizeBytes: number
+  altText: string | null
+  createdAt: string
+  url: string | null
+  thumbnailUrl: string | null
+}
+
+interface AssetRow {
+  id: string
+  type: MediaType
+  filename: string
+  storage_path: string
+  mime_type: string
+  size_bytes: number
+  alt_text: string | null
+  created_at: string
+  signed_url: string | null
+  thumbnail_url: string | null
+}
+
+function rowToAsset(r: AssetRow): Asset {
+  return {
+    id:           r.id,
+    type:         r.type,
+    filename:     r.filename,
+    storagePath:  r.storage_path,
+    mimeType:     r.mime_type,
+    sizeBytes:    r.size_bytes,
+    altText:      r.alt_text,
+    createdAt:    r.created_at,
+    url:          r.signed_url,
+    thumbnailUrl: r.thumbnail_url,
+  }
+}
 
 const FILTERS = [
   { label: 'All',    value: '' },
@@ -27,8 +66,11 @@ export default function MediaLibrary() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get(`/api/media/library?page=${page}&limit=24`)
-      .then((r) => setAssets((prev) => page === 1 ? r.data : [...prev, ...r.data]))
+    api.get<AssetRow[]>(`/api/media/library?page=${page}&limit=24`)
+      .then((r) => {
+        const mapped = r.data.map(rowToAsset)
+        setAssets((prev) => page === 1 ? mapped : [...prev, ...mapped])
+      })
       .catch(() => toast.error('Failed to load media'))
       .finally(() => setLoading(false))
   }, [page])
@@ -75,19 +117,33 @@ export default function MediaLibrary() {
           ) : (
             <>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {filtered.map((asset) => (
-                  <button
-                    key={asset.id}
-                    onClick={() => setSelected(asset)}
-                    className={`aspect-square rounded-xl overflow-hidden border-2 transition-all ${selected?.id === asset.id ? 'border-indigo-400' : 'border-transparent hover:border-gray-200'}`}
-                  >
-                    {asset.type === 'video' ? (
-                      <div className="w-full h-full bg-gray-900 flex items-center justify-center text-2xl text-white">▶</div>
-                    ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">{asset.filename.slice(0, 10)}</div>
-                    )}
-                  </button>
-                ))}
+                {filtered.map((asset) => {
+                  const thumbSrc = asset.thumbnailUrl || (asset.type !== 'video' ? asset.url : null)
+                  return (
+                    <button
+                      key={asset.id}
+                      onClick={() => setSelected(asset)}
+                      title={asset.filename}
+                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all bg-gray-100 ${selected?.id === asset.id ? 'border-indigo-400' : 'border-transparent hover:border-gray-200'}`}
+                    >
+                      {thumbSrc ? (
+                        <img
+                          src={thumbSrc}
+                          alt={asset.altText || asset.filename}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                          {asset.filename.slice(0, 10)}
+                        </div>
+                      )}
+                      {asset.type === 'video' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-2xl text-white">▶</div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
               {assets.length >= page * 24 && (
                 <button onClick={() => setPage((p) => p + 1)} className="mt-4 w-full text-sm text-gray-500 border border-gray-200 rounded-lg py-2 hover:bg-gray-50">
@@ -106,7 +162,17 @@ export default function MediaLibrary() {
               <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600">×</button>
             </div>
             <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-sm overflow-hidden">
-              {selected.type === 'video' ? '▶ Video' : selected.filename}
+              {selected.type === 'video' ? (
+                selected.url ? (
+                  <video src={selected.url} poster={selected.thumbnailUrl || undefined} controls className="w-full h-full object-contain bg-black" />
+                ) : (
+                  <span>▶ Video</span>
+                )
+              ) : selected.url ? (
+                <img src={selected.url} alt={selected.altText || selected.filename} className="w-full h-full object-contain" />
+              ) : (
+                <span className="px-2 text-center wrap-break-word">{selected.filename}</span>
+              )}
             </div>
             <div className="space-y-1 text-xs text-gray-500">
               <p className="truncate" title={selected.filename}>{selected.filename}</p>

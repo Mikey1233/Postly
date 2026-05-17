@@ -10,6 +10,7 @@
 
 html, body, #root {
   height: 100%;
+  overflow: hidden;
 }
 
 /* ── Dark-mode token mapping ──────────────────────────────────────────────
@@ -30,12 +31,30 @@ html, body, #root {
 .dark .bg-blue-50    { background-color: #172554; }
 .dark .bg-green-50   { background-color: #052e16; }
 .dark .bg-red-50     { background-color: #450a0a; }
+.dark .bg-rose-50    { background-color: #4c0519; }
+
+/* Opacity-modified bg utilities (e.g. bg-gray-50/60) don't match the
+   .dark .bg-gray-50 selector — Tailwind generates a different class.
+   Mirror the common opacity slots used in the app. */
+.dark .bg-gray-50\/60   { background-color: rgba(31, 41, 55, 0.45); }
+.dark .bg-gray-50\/40   { background-color: rgba(31, 41, 55, 0.35); }
+.dark .bg-indigo-50\/70 { background-color: rgba(49, 46, 129, 0.35); }
+.dark .bg-indigo-50\/30 { background-color: rgba(49, 46, 129, 0.20); }
+.dark .bg-rose-50\/40   { background-color: rgba(136, 19, 55, 0.20); }
+.dark .bg-rose-50\/60   { background-color: rgba(136, 19, 55, 0.30); }
 
 .dark .border-gray-100 { border-color: #1f2937; }
 .dark .border-gray-200 { border-color: #1f2937; }
 .dark .border-gray-300 { border-color: #374151; }
+.dark .border-indigo-100 { border-color: #312e81; }
 .dark .border-indigo-200 { border-color: #3730a3; }
+.dark .border-indigo-300 { border-color: #4338ca; }
 .dark .border-amber-200  { border-color: #92400e; }
+.dark .border-rose-200   { border-color: #881337; }
+
+.dark .text-indigo-700 { color: #a5b4fc; }
+.dark .text-indigo-600 { color: #818cf8; }
+.dark .text-rose-700   { color: #fda4af; }
 
 .dark .text-gray-900 { color: #f3f4f6; }
 .dark .text-gray-800 { color: #e5e7eb; }
