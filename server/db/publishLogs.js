@@ -23,4 +23,9 @@ module.exports = {
     if (error) throw error;
     return data;
   },
+
+  async removeForPost(postId) {
+    const { error } = await supabase.from('publish_logs').delete().eq('post_id', postId);
+    if (error) throw error;
+  },
 };

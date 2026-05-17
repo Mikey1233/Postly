@@ -20,11 +20,29 @@ export interface ContentPillar {
   postCount: number
 }
 
+export type Tone =
+  | 'default' | 'motivational' | 'educational' | 'sales' | 'inspirational'
+  | 'storytelling' | 'humorous' | 'controversial' | 'thought-leadership'
+
+export interface VoiceProfile {
+  id: string
+  name: string
+  platform: Platform
+  systemPrompt: string
+  analysis: Record<string, unknown>
+  isDefault: boolean
+}
+
 interface CurrentPost {
   id: string | null
   content: string
+  // The story / intent behind the post — what's on the user's mind, why they're
+  // writing it. Threaded into every AI call (compose, edit, hooks, score, …)
+  // so suggestions are grounded in the writer's actual goal.
+  context: string
   platforms: Platform[]
-  voice: Platform | null
+  voice: string | null   // voice profile id
+  tone: Tone
   mediaAssets: MediaAsset[]
   postType: 'text' | 'image' | 'video'
   pillarId: string | null
@@ -41,7 +59,7 @@ interface AuthState {
 interface AppState {
   auth: AuthState
   currentPost: CurrentPost
-  voiceProfiles: Partial<Record<Platform, { systemPrompt: string; analysis: Record<string, unknown> }>>
+  voiceProfiles: VoiceProfile[]
   platformConnections: Partial<Record<Platform, { configured: boolean; connected: boolean; state?: string; accountName?: string; expiresAt?: string }>>
   selectedModel: string
   contentPillars: ContentPillar[]
@@ -64,7 +82,9 @@ interface AppState {
   resetComposer: () => void
 
   setPlatformConnections: (connections: AppState['platformConnections']) => void
-  setVoiceProfile: (platform: Platform, profile: AppState['voiceProfiles'][Platform]) => void
+  setVoiceProfiles: (profiles: VoiceProfile[]) => void
+  upsertVoiceProfile: (profile: VoiceProfile) => void
+  removeVoiceProfile: (id: string) => void
   setSelectedModel: (model: string) => void
   setContentPillars: (pillars: ContentPillar[]) => void
   setAILoading: (loading: boolean) => void
@@ -74,8 +94,8 @@ interface AppState {
 }
 
 const DEFAULT_POST: CurrentPost = {
-  id: null, content: '', platforms: ['linkedin'], voice: 'linkedin', mediaAssets: [],
-  postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
+  id: null, content: '', context: '', platforms: ['linkedin'], voice: null, tone: 'default',
+  mediaAssets: [], postType: 'text', pillarId: null, scheduledAt: null, targetGroup: null,
 }
 
 const useAppStore = create<AppState>((set) => ({
@@ -83,7 +103,7 @@ const useAppStore = create<AppState>((set) => ({
   profileName: null,
   profileEmail: null,
   currentPost: { ...DEFAULT_POST },
-  voiceProfiles: {},
+  voiceProfiles: [],
   platformConnections: {},
   selectedModel: 'anthropic/claude-sonnet-4-5',
   contentPillars: [],
@@ -119,7 +139,13 @@ const useAppStore = create<AppState>((set) => ({
   setProfileName:  (name)  => set({ profileName: name }),
   setProfileEmail: (email) => set({ profileEmail: email }),
   setPlatformConnections: (connections) => set({ platformConnections: connections }),
-  setVoiceProfile: (platform, profile) => set((s) => ({ voiceProfiles: { ...s.voiceProfiles, [platform]: profile } })),
+  setVoiceProfiles: (profiles) => set({ voiceProfiles: profiles }),
+  upsertVoiceProfile: (profile) => set((s) => {
+    const idx = s.voiceProfiles.findIndex((v) => v.id === profile.id)
+    const next = idx === -1 ? [...s.voiceProfiles, profile] : s.voiceProfiles.map((v) => v.id === profile.id ? profile : v)
+    return { voiceProfiles: next }
+  }),
+  removeVoiceProfile: (id) => set((s) => ({ voiceProfiles: s.voiceProfiles.filter((v) => v.id !== id) })),
   setSelectedModel: (model) => set({ selectedModel: model }),
   setContentPillars: (pillars) => set({ contentPillars: pillars }),
   setAILoading: (loading) => set({ isAILoading: loading }),

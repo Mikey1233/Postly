@@ -8,6 +8,10 @@
   box-sizing: border-box;
 }
 
+html, body, #root {
+  height: 100%;
+}
+
 /* ── Dark-mode token mapping ──────────────────────────────────────────────
    Maps the gray-50/100/200/.../900 + white/black tokens used throughout the
    codebase to a darker palette when html.dark is active. This avoids having

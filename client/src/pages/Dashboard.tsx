@@ -11,7 +11,19 @@ import PlatformIcon from '../components/ui/PlatformIcon'
 
 interface UpcomingPost { id: string; content: string; platform: Platform[]; scheduled_at: string; status: string }
 
+// localStorage signature → set of "alert keys" the user has dismissed.
+// Re-key when the underlying state changes so a new condition can re-fire.
+const DISMISS_KEY = 'postly-dismissed-alerts'
+function loadDismissed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]')) } catch { return new Set() }
+}
+function persistDismissed(set: Set<string>) {
+  try { localStorage.setItem(DISMISS_KEY, JSON.stringify([...set])) } catch { /* storage blocked */ }
+}
+
 function ExpiringTokensBanner({ connections }: { connections: ReturnType<typeof useAppStore.getState>['platformConnections'] }) {
+  const [dismissed, setDismissed] = useState<Set<string>>(loadDismissed)
+
   const expiring = Object.entries(connections)
     .map(([platform, conn]) => {
       if (!conn?.connected || !conn.expiresAt) return null
@@ -20,8 +32,17 @@ function ExpiringTokensBanner({ connections }: { connections: ReturnType<typeof 
       return { platform: platform as Platform, daysLeft }
     })
     .filter((x): x is { platform: Platform; daysLeft: number } => x !== null)
+    .filter(({ platform, daysLeft }) => !dismissed.has(`token:${platform}:${daysLeft}`))
 
   if (expiring.length === 0) return null
+
+  const dismiss = (key: string) => {
+    const next = new Set(dismissed)
+    next.add(key)
+    setDismissed(next)
+    persistDismissed(next)
+  }
+
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
       {expiring.map(({ platform, daysLeft }) => (
@@ -29,14 +50,56 @@ function ExpiringTokensBanner({ connections }: { connections: ReturnType<typeof 
           <p className="text-sm text-amber-800">
             <span className="font-medium">{PLATFORM_LABELS[platform]}</span> connection expires in {daysLeft} day{daysLeft === 1 ? '' : 's'} — reconnect to keep scheduled posts working.
           </p>
-          <a
-            href={`${BASE_URL}/api/platforms/${platform}/auth`}
-            className="text-sm font-medium text-amber-900 hover:underline shrink-0"
-          >
-            Reconnect →
-          </a>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href={`${BASE_URL}/api/platforms/${platform}/auth`}
+              className="text-sm font-medium text-amber-900 hover:underline"
+            >
+              Reconnect →
+            </a>
+            <button
+              onClick={() => dismiss(`token:${platform}:${daysLeft}`)}
+              title="Dismiss"
+              aria-label="Dismiss"
+              className="text-amber-700 hover:text-amber-900 text-base leading-none px-1"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function FailedPostsBanner({ failed, onView }: { failed: UpcomingPost[]; onView: () => void }) {
+  const [dismissed, setDismissed] = useState<Set<string>>(loadDismissed)
+  // Signature changes whenever the set of failed post IDs changes, so a new
+  // failure after a dismissal will re-surface the banner.
+  const signature = `failed:${failed.map((p) => p.id).sort().join(',')}`
+  if (failed.length === 0 || dismissed.has(signature)) return null
+
+  const dismiss = () => {
+    const next = new Set(dismissed)
+    next.add(signature)
+    setDismissed(next)
+    persistDismissed(next)
+  }
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between gap-3">
+      <p className="text-sm text-red-700 font-medium">⚠ {failed.length} post{failed.length !== 1 ? 's' : ''} failed to publish</p>
+      <div className="flex items-center gap-2 shrink-0">
+        <button onClick={onView} className="text-sm text-red-600 underline">View & Retry</button>
+        <button
+          onClick={dismiss}
+          title="Dismiss"
+          aria-label="Dismiss"
+          className="text-red-600 hover:text-red-800 text-base leading-none px-1"
+        >
+          ✕
+        </button>
+      </div>
     </div>
   )
 }
@@ -93,13 +156,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Failed posts alert */}
-      {failed.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
-          <p className="text-sm text-red-700 font-medium">⚠ {failed.length} post{failed.length !== 1 ? 's' : ''} failed to publish</p>
-          <button onClick={() => navigate('/analytics')} className="text-sm text-red-600 underline">View & Retry</button>
-        </div>
-      )}
+      <FailedPostsBanner failed={failed} onView={() => navigate('/analytics')} />
 
       {/* Upcoming posts */}
       <div>

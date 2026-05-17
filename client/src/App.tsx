@@ -19,6 +19,7 @@ import Login             from './pages/Login'
 import SignUp            from './pages/SignUp'
 import Dashboard     from './pages/Dashboard'
 import Composer      from './pages/Composer'
+import Drafts        from './pages/Drafts'
 import Platforms     from './pages/Platforms'
 import VoiceSetup    from './pages/VoiceSetup'
 import Settings      from './pages/Settings'
@@ -54,6 +55,8 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
   groups: <Icon d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />,
 
   media: <Icon d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />,
+
+  drafts: <Icon d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />,
 
   platforms: <Icon d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />,
 
@@ -112,7 +115,6 @@ function LogoutIcon() {
 // stay supported as AI generation targets (see Composer & VoiceSetup) but are
 // not represented in connection status indicators.
 const CONNECTABLE_PLATFORMS: Platform[] = ['linkedin', 'x']
-const VOICE_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
 
 interface NavItemProps { to: string; label: string; iconKey: string; collapsed: boolean; end?: boolean }
 
@@ -180,7 +182,7 @@ function Sidebar() {
 
   return (
     <aside
-      className={`scrollbar-none h-screen shrink-0 border-r border-gray-200 bg-white flex flex-col py-4 overflow-y-auto transition-all duration-200 ease-in-out ${
+      className={`scrollbar-none h-full shrink-0 border-r border-gray-200 bg-white flex flex-col py-4 overflow-y-auto transition-all duration-200 ease-in-out ${
         collapsed ? 'w-[60px] px-2' : 'w-56 px-3'
       }`}
     >
@@ -205,6 +207,7 @@ function Sidebar() {
       <div className="flex flex-col gap-0.5">
         <NavItem to="/"          label="Dashboard" iconKey="dashboard" collapsed={collapsed} end />
         <NavItem to="/compose"   label="Compose"   iconKey="compose"   collapsed={collapsed} />
+        <NavItem to="/drafts"    label="Drafts"    iconKey="drafts"    collapsed={collapsed} />
         <NavItem to="/calendar"  label="Calendar"  iconKey="calendar"  collapsed={collapsed} />
         <NavItem to="/analytics" label="Analytics" iconKey="analytics" collapsed={collapsed} />
 
@@ -285,7 +288,7 @@ function AppShell() {
   useKeyboardShortcuts()
   const navigate = useNavigate()
   const setPlatformConnections = useAppStore((s) => s.setPlatformConnections)
-  const setVoiceProfile        = useAppStore((s) => s.setVoiceProfile)
+  const setVoiceProfiles       = useAppStore((s) => s.setVoiceProfiles)
   const setProfileName         = useAppStore((s) => s.setProfileName)
   const setProfileEmail        = useAppStore((s) => s.setProfileEmail)
   const platformConnections    = useAppStore((s) => s.platformConnections)
@@ -298,13 +301,19 @@ function AppShell() {
       setProfileName(data.name)
       setProfileEmail(data.email)
     }).catch(() => {})
-    VOICE_PLATFORMS.forEach(async (p) => {
-      try {
-        const { data } = await api.get(`/api/voice/${p}`)
-        if (data?.system_prompt) setVoiceProfile(p, { systemPrompt: data.system_prompt, analysis: data.analysis })
-      } catch { /* no profile yet */ }
-    })
-  }, [setPlatformConnections, setVoiceProfile, setProfileName, setProfileEmail])
+    api.get('/api/voice').then(({ data }) => {
+      setVoiceProfiles((data as Array<{ id: string; name: string; platform: Platform; system_prompt: string; analysis: Record<string, unknown>; is_default: boolean }>)
+        .filter((row) => row.system_prompt)
+        .map((row) => ({
+          id: row.id,
+          name: row.name || `${row.platform} voice`,
+          platform: row.platform,
+          systemPrompt: row.system_prompt,
+          analysis: row.analysis,
+          isDefault: !!row.is_default,
+        })))
+    }).catch(() => {})
+  }, [setPlatformConnections, setVoiceProfiles, setProfileName, setProfileEmail])
 
   // Token-expiry OS notifications — once per session per platform
   useEffect(() => {
@@ -342,13 +351,14 @@ function AppShell() {
   }, [navigate])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900">
+    <div className="flex h-full overflow-hidden bg-gray-50 text-gray-900">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto scrollbar-slim">
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/"                 element={<Dashboard />} />
             <Route path="/compose"          element={<Composer />} />
+            <Route path="/drafts"           element={<Drafts />} />
             <Route path="/calendar"         element={<Calendar />} />
             <Route path="/analytics"        element={<Analytics />} />
             <Route path="/platforms"        element={<Platforms />} />

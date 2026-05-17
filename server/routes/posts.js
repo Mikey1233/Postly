@@ -9,6 +9,13 @@ router.get('/scheduled', async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/posts/drafts — ordered by most-recently-updated first
+router.get('/drafts', async (_req, res, next) => {
+  try {
+    res.json(await db.posts.getDrafts());
+  } catch (err) { next(err); }
+});
+
 // GET /api/posts/history?page=1&limit=20&search=...&platform=linkedin&type=image&from=...&to=...&pillar=...
 router.get('/history', async (req, res, next) => {
   try {
@@ -55,7 +62,7 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const {
-      content, platform, post_type = 'text', status = 'draft',
+      content, context, platform, post_type = 'text', status = 'draft',
       scheduled_at, ai_generated, voice_profile_id, target_group, metadata,
     } = req.body;
     if (!content) return res.status(400).json({ error: 'content required' });
@@ -63,6 +70,7 @@ router.post('/', async (req, res, next) => {
 
     const post = await db.posts.create({
       content,
+      context:          context || null,
       platform,
       post_type,
       status,
@@ -79,7 +87,7 @@ router.post('/', async (req, res, next) => {
 // PUT /api/posts/:id
 router.put('/:id', async (req, res, next) => {
   try {
-    const allowed = ['content', 'platform', 'post_type', 'status', 'scheduled_at',
+    const allowed = ['content', 'context', 'platform', 'post_type', 'status', 'scheduled_at',
                      'voice_profile_id', 'target_group', 'metadata'];
     const patch = {};
     for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];

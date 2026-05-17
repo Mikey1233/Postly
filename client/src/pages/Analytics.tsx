@@ -54,6 +54,19 @@ export default function Analytics() {
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
   }, [search, filterPlatform, filterType])
 
+  const deletePost = async (id: string) => {
+    if (!confirm('Delete this post and all its analytics? This cannot be undone.')) return
+    const prev = posts
+    setPosts((p) => p.filter((row) => row.id !== id))
+    try {
+      await api.delete(`/api/posts/${id}`)
+      toast.success('Post deleted')
+    } catch {
+      setPosts(prev)
+      toast.error('Failed to delete post')
+    }
+  }
+
   const totals = posts.reduce((acc, p) => {
     p.post_analytics?.forEach((a) => {
       acc.impressions += a.impressions || 0
@@ -153,7 +166,7 @@ export default function Analytics() {
             {sorted.map((post) => {
               const a = post.post_analytics?.[0] || {} as Partial<AnalyticsRow>
               return (
-                <div key={post.id} className="px-5 py-4 flex items-start gap-4">
+                <div key={post.id} className="px-5 py-4 flex items-start gap-4 group">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       {post.platform.map((p) => (
@@ -168,6 +181,21 @@ export default function Analytics() {
                     <div className="text-center"><p className="font-medium text-gray-900">{a.likes ?? '—'}</p><p>Likes</p></div>
                     <div className="text-center"><p className="font-medium text-gray-900">{a.comments ?? '—'}</p><p>Comments</p></div>
                   </div>
+                  <button
+                    onClick={() => deletePost(post.id)}
+                    title="Delete post and its analytics"
+                    aria-label="Delete post"
+                    className="shrink-0 text-gray-300 hover:text-red-500 transition-colors p-1 -mr-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+                      className="w-4 h-4">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    </svg>
+                  </button>
                 </div>
               )
             })}

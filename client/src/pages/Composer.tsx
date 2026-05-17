@@ -1,21 +1,65 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 import api, { streamSSE } from '../lib/api'
 import { PLATFORM_LIMITS, PLATFORM_LABELS, PLATFORM_COLORS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
+import type { Tone, MediaAsset } from '../store/useAppStore'
 import MediaUploadZone from '../components/media/MediaUploadZone'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
-// Voices can come from any of the 4 platforms the user has analysed.
-const VOICE_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
+interface DbMediaRow {
+  id: string
+  type: 'image' | 'video' | 'gif'
+  filename: string
+  storage_path: string
+  thumbnail_path: string | null
+  mime_type: string
+  size_bytes: number
+  alt_text: string | null
+  sort_order: number
+}
+function dbToMediaAsset(row: DbMediaRow): MediaAsset {
+  return {
+    id: row.id,
+    type: row.type,
+    filename: row.filename,
+    storagePath: row.storage_path,
+    thumbnailPath: row.thumbnail_path,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    altText: row.alt_text,
+    sortOrder: row.sort_order,
+  }
+}
+
+function serverError(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data as { error?: string } | undefined
+    if (data?.error) return data.error
+  }
+  return fallback
+}
+
 // We can only actually publish/schedule to LinkedIn + X.
 const PUBLISH_PLATFORMS: Platform[] = ['linkedin', 'x']
 
+const TONES: { value: Tone; label: string }[] = [
+  { value: 'default',            label: 'Default' },
+  { value: 'motivational',       label: 'Motivational' },
+  { value: 'educational',        label: 'Educational' },
+  { value: 'sales',              label: 'Sales' },
+  { value: 'inspirational',      label: 'Inspirational' },
+  { value: 'storytelling',       label: 'Storytelling' },
+  { value: 'humorous',           label: 'Humorous' },
+  { value: 'controversial',      label: 'Controversial' },
+  { value: 'thought-leadership', label: 'Thought leadership' },
+]
+
 interface ScoreData { hookStrength: number; clarity: number; structure: number; predictedEngagement: number; suggestions: string[] }
-interface AIMessage { role: 'user' | 'assistant'; content: string }
 interface HookData { type: string; hook: string }
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
@@ -32,7 +76,10 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 
 export default function Composer() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const draftIdParam = searchParams.get('id')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const contextRef = useRef<HTMLTextAreaElement>(null)
   const autocompleteCtrl = useRef<AbortController | null>(null)
   const autocompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -59,16 +106,33 @@ export default function Composer() {
     }))
   )
 
-  // Voices the user has actually saved
-  const availableVoices = VOICE_PLATFORMS.filter((p) => voiceProfiles[p]?.systemPrompt)
-  const activeVoice: Platform | null = currentPost.voice ?? availableVoices[0] ?? null
+  // All saved voices. The composer always renders the full list — user picks.
+  const availableVoices = voiceProfiles
+  const activeVoice = availableVoices.find((v) => v.id === currentPost.voice)
+    ?? availableVoices.find((v) => v.isDefault)
+    ?? availableVoices[0]
+    ?? null
+  const activePlatform: Platform = activeVoice?.platform ?? 'linkedin'
 
   const [models, setModels]         = useState<{ id: string; name: string }[]>([])
   const [ghostText, setGhostText]   = useState('')
-  const [aiMessages, setAIMessages] = useState<AIMessage[]>([])
   const [aiInput, setAIInput]       = useState('')
-  const [aiLoading, setAILoading]   = useState(false)
   const [saving, setSaving]         = useState(false)
+
+  // Proposed-edit flow — AI reads the textarea, returns a revised version,
+  // user accepts or rejects from a card right above the textarea.
+  // `proposedEditRange` is null for whole-draft edits, or [start, end] for selection edits.
+  const [proposedEdit, setProposedEdit]                 = useState<string | null>(null)
+  const [proposedEditInstruction, setProposedEditInstr] = useState('')
+  const [proposedEditLoading, setProposedEditLoading]   = useState(false)
+  const [proposedEditRange, setProposedEditRange]       = useState<[number, number] | null>(null)
+  const proposedEditCtrl = useRef<AbortController | null>(null)
+
+  // Last-known selection inside the textarea. Tracked on every selection change
+  // so it survives the user clicking into the AI input before hitting send.
+  const [selectionStart, setSelectionStart] = useState(0)
+  const [selectionEnd,   setSelectionEnd]   = useState(0)
+  const selectionLength = Math.max(0, selectionEnd - selectionStart)
   const [scheduling, setScheduling] = useState(false)
   const [posting, setPosting]       = useState(false)
   const [scheduleModal, setScheduleModal] = useState(false)
@@ -85,20 +149,53 @@ export default function Composer() {
   const [repurposeResult, setRepurposeResult]   = useState('')
   const [repurposeLoading, setRepurposeLoading] = useState(false)
 
-  // Rewrite-in-voice
-  const [rewriting, setRewriting] = useState<Platform | null>(null)
+  // Rewrite-in-voice: tracks voice id being rewritten
+  const [rewriting, setRewriting] = useState<string | null>(null)
   const rewriteCtrl = useRef<AbortController | null>(null)
 
   useEffect(() => {
     api.get('/api/ai/models').then((r) => setModels(r.data.models)).catch(() => {})
   }, [])
 
-  // If the stored voice is missing/unavailable (e.g. user just analysed their first voice),
-  // fall back to the first available one so AI calls have a voice context.
+  // Load a saved draft (or any post) into the composer when ?id=<uuid> is set.
+  // Navigated to from /drafts and from the Calendar drawer's Edit button.
+  useEffect(() => {
+    if (!draftIdParam || draftIdParam === currentPost.id) return
+    let cancelled = false
+    api.get(`/api/posts/${draftIdParam}`).then(({ data }) => {
+      if (cancelled) return
+      setCurrentPost({
+        id:          data.id,
+        content:     data.content || '',
+        context:     data.context || '',
+        platforms:   data.platform || [],
+        postType:    data.post_type || 'text',
+        voice:       data.voice_profile_id || null,
+        scheduledAt: data.scheduled_at || null,
+        mediaAssets: (data.media_assets || []).map(dbToMediaAsset),
+      })
+    }).catch(() => toast.error('Failed to load draft'))
+    return () => { cancelled = true }
+  // currentPost.id intentionally omitted — we only want to load when the URL param changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftIdParam, setCurrentPost])
+
+  // Resize the context textarea to fit whatever's in it (handles draft loads).
+  useEffect(() => {
+    const el = contextRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [currentPost.context])
+
+  // If the stored voice is missing/unavailable (e.g. user just analysed their first voice
+  // or deleted the one they had picked), fall back to the platform default.
   useEffect(() => {
     if (!availableVoices.length) return
-    if (!currentPost.voice || !availableVoices.includes(currentPost.voice)) {
-      setCurrentPost({ voice: availableVoices[0] })
+    const exists = availableVoices.find((v) => v.id === currentPost.voice)
+    if (!exists) {
+      const fallback = availableVoices.find((v) => v.isDefault) ?? availableVoices[0]
+      setCurrentPost({ voice: fallback.id })
     }
   }, [availableVoices, currentPost.voice, setCurrentPost])
 
@@ -120,7 +217,14 @@ export default function Composer() {
         let suggestion = ''
         await streamSSE(
           '/api/ai/autocomplete',
-          { text: text.slice(-300), platform: activeVoice || 'linkedin', model: selectedModel },
+          {
+            text: text.slice(-300),
+            platform: activePlatform,
+            voiceId: activeVoice?.id,
+            model: selectedModel,
+            tone: currentPost.tone,
+            context: currentPost.context || null,
+          },
           (chunk) => { suggestion += chunk; setGhostText(suggestion) },
           autocompleteCtrl.current.signal,
         )
@@ -128,18 +232,22 @@ export default function Composer() {
         if (!(err instanceof Error) || err.name !== 'AbortError') { /* silent */ }
       }
     }, 500)
-  }, [activeVoice, selectedModel])
+  }, [activeVoice, activePlatform, selectedModel, currentPost.tone, currentPost.context])
 
   const scheduleScore = useCallback((content: string) => {
     if (scoreTimer.current) clearTimeout(scoreTimer.current)
     if (content.length < 50) { setPostScore(null); return }
     scoreTimer.current = setTimeout(async () => {
       try {
-        const { data } = await api.post<ScoreData>('/api/ai/score', { content, platform: activeVoice || 'linkedin' })
+        const { data } = await api.post<ScoreData>('/api/ai/score', {
+          content,
+          platform: activePlatform,
+          context: currentPost.context || null,
+        })
         setPostScore(data)
       } catch { /* silent */ }
     }, 1500)
-  }, [activeVoice, setPostScore])
+  }, [activePlatform, setPostScore, currentPost.context])
 
   const handleContentChange = (val: string) => {
     setPostContent(val)
@@ -149,6 +257,11 @@ export default function Composer() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Proposed edit takes priority over ghost autocomplete: Tab accepts, Esc rejects.
+    if (proposedEdit !== null && !proposedEditLoading) {
+      if (e.key === 'Tab')    { e.preventDefault(); acceptProposedEdit();  return }
+      if (e.key === 'Escape') { e.preventDefault(); rejectProposedEdit();  return }
+    }
     if (e.key === 'Tab' && ghostText) {
       e.preventDefault()
       setPostContent(currentPost.content + ghostText)
@@ -158,42 +271,114 @@ export default function Composer() {
     if (e.key === 'Escape') setGhostText('')
   }
 
-  const sendAIMessage = async () => {
-    if (!aiInput.trim() || aiLoading) return
-    const userMsg: AIMessage = { role: 'user', content: aiInput }
-    setAIMessages((prev) => [...prev, userMsg])
-    setAIInput('')
-    setAILoading(true)
-    let response = ''
-    try {
-      await streamSSE(
-        '/api/ai/compose',
-        { topic: aiInput, platform: activeVoice || 'linkedin', model: selectedModel },
-        (chunk) => {
-          response += chunk
-          setAIMessages((prev) => {
-            const msgs = [...prev]
-            const last = msgs[msgs.length - 1]
-            if (last?.role === 'assistant') msgs[msgs.length - 1] = { role: 'assistant', content: response }
-            else msgs.push({ role: 'assistant', content: response })
-            return msgs
-          })
-        },
-      )
-    } catch { toast.error('AI request failed') }
-    finally { setAILoading(false) }
+  const trackSelection = () => {
+    const el = textareaRef.current
+    if (!el) return
+    setSelectionStart(el.selectionStart)
+    setSelectionEnd(el.selectionEnd)
   }
 
-  const useAIDraft = () => {
-    const last = aiMessages.filter((m) => m.role === 'assistant').pop()
-    if (last) { setPostContent(last.content); setGhostText('') }
+  const cancelProposedEdit = () => {
+    if (proposedEditCtrl.current) proposedEditCtrl.current.abort()
+    setProposedEdit(null)
+    setProposedEditInstr('')
+    setProposedEditRange(null)
+    setProposedEditLoading(false)
+  }
+
+  // Send the user's instruction + current draft to the AI.
+  //  - Empty draft → /api/ai/compose generates a first version.
+  //  - Has draft, no selection → /api/ai/edit revises the whole draft.
+  //  - Has selection → /api/ai/edit returns a replacement for just the selected range.
+  // The result appears as a proposed edit above the textarea for accept/reject.
+  const sendAIRequest = async () => {
+    const instruction = aiInput.trim()
+    if (!instruction || proposedEditLoading) return
+    if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
+    setGhostText('')
+    setAIInput('')
+    setProposedEditInstr(instruction)
+    setProposedEditLoading(true)
+    setProposedEdit('')
+
+    const existing = currentPost.content
+    const hasContent = existing.trim().length > 0
+    const hasSelection = hasContent && selectionLength > 0
+    setProposedEditRange(hasSelection ? [selectionStart, selectionEnd] : null)
+
+    proposedEditCtrl.current = new AbortController()
+
+    const endpoint = hasContent ? '/api/ai/edit' : '/api/ai/compose'
+    const sharedContext = currentPost.context || null
+    const body = hasContent
+      ? {
+          content: existing,
+          instruction,
+          selection: hasSelection
+            ? { start: selectionStart, end: selectionEnd, text: existing.slice(selectionStart, selectionEnd) }
+            : null,
+          platform: activePlatform,
+          voiceId:  activeVoice?.id,
+          model:    selectedModel,
+          tone:     currentPost.tone,
+          context:  sharedContext,
+        }
+      : {
+          topic: instruction,
+          platform: activePlatform,
+          voiceId: activeVoice?.id,
+          model: selectedModel,
+          tone: currentPost.tone,
+          context: sharedContext,
+        }
+
+    let result = ''
+    try {
+      await streamSSE(
+        endpoint,
+        body,
+        (chunk) => { result += chunk; setProposedEdit(result) },
+        proposedEditCtrl.current.signal,
+      )
+    } catch (err: unknown) {
+      if (!(err instanceof Error) || err.name !== 'AbortError') {
+        toast.error('AI request failed')
+        cancelProposedEdit()
+      }
+    } finally {
+      setProposedEditLoading(false)
+    }
+  }
+
+  const acceptProposedEdit = () => {
+    if (!proposedEdit) return
+    let next: string
+    if (proposedEditRange) {
+      const [start, end] = proposedEditRange
+      next = currentPost.content.slice(0, start) + proposedEdit + currentPost.content.slice(end)
+    } else {
+      next = proposedEdit
+    }
+    setPostContent(next)
+    adjustHeight()
+    scheduleScore(next)
+    setProposedEdit(null)
+    setProposedEditInstr('')
+    setProposedEditRange(null)
+    // Return focus to the textarea so the keyboard flow continues there.
+    requestAnimationFrame(() => textareaRef.current?.focus())
+  }
+
+  const rejectProposedEdit = () => {
+    cancelProposedEdit()
+    requestAnimationFrame(() => textareaRef.current?.focus())
   }
 
   // Switch the active voice. If there's existing content, stream a rewrite
   // through /api/ai/rephrase using the selected voice's saved system prompt.
-  const selectVoice = async (voice: Platform) => {
+  const selectVoice = async (voice: typeof availableVoices[number]) => {
     if (rewriting) return
-    setCurrentPost({ voice })
+    setCurrentPost({ voice: voice.id })
 
     const content = currentPost.content.trim()
     if (!content) return
@@ -201,14 +386,21 @@ export default function Composer() {
     if (autocompleteCtrl.current) autocompleteCtrl.current.abort()
     setGhostText('')
 
-    setRewriting(voice)
+    setRewriting(voice.id)
     rewriteCtrl.current = new AbortController()
     let rewritten = ''
     setPostContent('')
     try {
       await streamSSE(
         '/api/ai/rephrase',
-        { content, platform: voice, model: selectedModel },
+        {
+          content,
+          platform: voice.platform,
+          voiceId: voice.id,
+          model: selectedModel,
+          tone: currentPost.tone,
+          context: currentPost.context || null,
+        },
         (chunk) => { rewritten += chunk; setPostContent(rewritten); adjustHeight() },
         rewriteCtrl.current.signal,
       )
@@ -226,19 +418,26 @@ export default function Composer() {
   const generateHashtags = async () => {
     if (!currentPost.content) { toast.error('Write a post first'); return }
     try {
-      const { data } = await api.post('/api/ai/hashtags', { content: currentPost.content, platform: activeVoice || 'linkedin' })
+      const { data } = await api.post('/api/ai/hashtags', { content: currentPost.content, platform: activePlatform })
       setPostContent(currentPost.content + '\n\n' + (data.hashtags as string[]).join(' '))
       toast.success('Hashtags added')
     } catch { toast.error('Failed to generate hashtags') }
   }
 
   const generateHooks = async () => {
-    if (!currentPost.content.trim()) { toast.error('Write some content first'); return }
+    const hasContent = currentPost.content.trim().length > 0
+    const hasContext = currentPost.context.trim().length > 0
+    if (!hasContent && !hasContext) { toast.error('Write some content or add context first'); return }
     setHooks([])
     setHooksLoading(true)
     setHooksModal(true)
     try {
-      const { data } = await api.post('/api/ai/hooks', { content: currentPost.content, platform: activeVoice || 'linkedin' })
+      const { data } = await api.post('/api/ai/hooks', {
+        content: currentPost.content,
+        context: currentPost.context || null,
+        platform: activePlatform,
+        voiceId: activeVoice?.id,
+      })
       setHooks(data.hooks || [])
     } catch { toast.error('Failed to generate hooks') }
     finally { setHooksLoading(false) }
@@ -258,23 +457,41 @@ export default function Composer() {
       let result = ''
       await streamSSE(
         '/api/ai/repurpose',
-        { content: currentPost.content, format: repurposeFormat, platform: activeVoice || 'linkedin', model: selectedModel },
+        { content: currentPost.content, format: repurposeFormat, platform: activePlatform, model: selectedModel },
         (chunk) => { result += chunk; setRepurposeResult(result) },
       )
     } catch { toast.error('Failed to repurpose') }
     finally { setRepurposeLoading(false) }
   }
 
-  const saveDraft = async () => {
+  const saveDraft = async ({ silent = false }: { silent?: boolean } = {}): Promise<string | null> => {
+    if (!currentPost.content.trim()) { toast.error('Write something first'); return null }
+    if (!currentPost.platforms.length) { toast.error('Pick at least one platform'); return null }
     setSaving(true)
     try {
+      if (currentPost.id) {
+        await api.put(`/api/posts/${currentPost.id}`, {
+          content: currentPost.content, platform: currentPost.platforms,
+          post_type: currentPost.postType,
+          voice_profile_id: currentPost.voice || null,
+          context: currentPost.context || null,
+        })
+        if (!silent) toast.success('Draft saved')
+        return currentPost.id
+      }
       const { data } = await api.post('/api/posts', {
         content: currentPost.content, platform: currentPost.platforms,
         status: 'draft', post_type: currentPost.postType,
+        voice_profile_id: currentPost.voice || null,
+        context: currentPost.context || null,
       })
       setCurrentPost({ id: data.id })
-      toast.success('Draft saved')
-    } catch { toast.error('Failed to save draft') }
+      if (!silent) toast.success('Draft saved')
+      return data.id as string
+    } catch (err) {
+      toast.error(serverError(err, 'Failed to save draft'))
+      return null
+    }
     finally { setSaving(false) }
   }
 
@@ -298,11 +515,12 @@ export default function Composer() {
 
   const postNow = async () => {
     if (!currentPost.platforms.length) { toast.error('Pick a platform to post to'); return }
-    if (!currentPost.id) await saveDraft()
     if (!confirm(`Post now to ${currentPost.platforms.map((p) => PLATFORM_LABELS[p]).join(' + ')}?`)) return
+    const id = currentPost.id || await saveDraft({ silent: true })
+    if (!id) return
     setPosting(true)
     try {
-      await api.post(`/api/posts/${currentPost.id}/publish`, {})
+      await api.post(`/api/posts/${id}/publish`, {})
       toast.success('Publishing started!')
       resetComposer()
       navigate('/')
@@ -311,37 +529,58 @@ export default function Composer() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── Left — Editor ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-5 gap-4 border-r border-gray-200">
+        <div className="flex-1 flex flex-col overflow-y-auto scrollbar-slim p-5 gap-4 border-r border-gray-200">
 
-          {/* Voice tabs — click to rewrite the post in that saved voice */}
+          {/* Voice picker — click a saved voice to rewrite the post in it */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-400 shrink-0 uppercase tracking-wide">Voice:</span>
             {availableVoices.length === 0 && (
               <Link to="/voice" className="text-xs text-indigo-600 hover:underline">
-                Analyse a voice profile to start writing →
+                Create a voice profile to start writing →
               </Link>
             )}
-            {availableVoices.map((p) => {
-              const active = activeVoice === p
-              const isRewriting = rewriting === p
+            {availableVoices.map((v) => {
+              const active = activeVoice?.id === v.id
+              const isRewriting = rewriting === v.id
               return (
                 <button
-                  key={p}
-                  onClick={() => selectVoice(p)}
+                  key={v.id}
+                  onClick={() => selectVoice(v)}
                   disabled={!!rewriting}
-                  title={`Rewrite in ${PLATFORM_LABELS[p]} voice`}
+                  title={`Rewrite in "${v.name}" (${PLATFORM_LABELS[v.platform]})`}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                     active ? 'text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                   }`}
-                  style={active ? { backgroundColor: PLATFORM_COLORS[p], borderColor: PLATFORM_COLORS[p] } : {}}
+                  style={active ? { backgroundColor: PLATFORM_COLORS[v.platform], borderColor: PLATFORM_COLORS[v.platform] } : {}}
                 >
-                  <PlatformIcon platform={p} size={14} className={active ? 'brightness-0 invert' : ''} />
-                  {PLATFORM_LABELS[p]} voice
+                  <PlatformIcon platform={v.platform} size={14} className={active ? 'brightness-0 invert' : ''} />
+                  <span className="truncate max-w-[180px]">{v.name}</span>
                   {isRewriting && <span className="ml-1 animate-pulse">…</span>}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Tone selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-400 shrink-0 uppercase tracking-wide">Tone:</span>
+            {TONES.map(({ value, label }) => {
+              const active = currentPost.tone === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => setCurrentPost({ tone: value })}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    active
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  {label}
                 </button>
               )
             })}
@@ -373,6 +612,85 @@ export default function Composer() {
             </div>
           )}
 
+          {/* Proposed AI edit — sits right above the textarea so accept/reject is
+              in the same vertical space as what's being changed. */}
+          {(proposedEdit !== null || proposedEditLoading) && (
+            <div className="border border-indigo-300 bg-indigo-50/70 rounded-xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 flex items-center gap-2 flex-wrap">
+                    Proposed edit
+                    <span className="text-[10px] font-medium normal-case text-indigo-500/80 bg-white border border-indigo-200 rounded-full px-2 py-0.5">
+                      {proposedEditRange ? `selection · ${proposedEditRange[1] - proposedEditRange[0]} chars` : 'whole draft'}
+                    </span>
+                    {proposedEditLoading && <span className="animate-pulse text-indigo-400 normal-case font-normal">streaming…</span>}
+                  </p>
+                  {proposedEditInstruction && (
+                    <p className="text-xs text-indigo-600/80 mt-1 truncate" title={proposedEditInstruction}>
+                      "{proposedEditInstruction}"
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={rejectProposedEdit}
+                    title="Reject (Esc)"
+                    className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50"
+                  >
+                    {proposedEditLoading ? 'Cancel' : 'Reject'}
+                  </button>
+                  <button
+                    onClick={acceptProposedEdit}
+                    disabled={proposedEditLoading || !proposedEdit}
+                    title="Accept (Tab)"
+                    className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
+                </div>
+              </div>
+              <div className="bg-white border border-indigo-100 rounded-lg p-3 max-h-72 overflow-y-auto scrollbar-slim">
+                <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  {proposedEdit || (proposedEditLoading ? '…' : '')}
+                </p>
+              </div>
+              {!proposedEditLoading && (
+                <p className="text-[10px] text-indigo-700/70 flex items-center gap-2">
+                  <kbd className="bg-white border border-indigo-200 rounded px-1.5 py-0.5 font-medium">Tab</kbd> accept
+                  <kbd className="bg-white border border-indigo-200 rounded px-1.5 py-0.5 font-medium">Esc</kbd> reject
+                  <span className="text-indigo-400">— from the editor</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Context — the "why" behind the post. Fed into every AI call so hooks,
+              CTAs, edits, and the score are grounded in the writer's actual intent. */}
+          <div className="border border-gray-200 rounded-xl bg-gray-50/60 px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="post-context" className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Context
+              </label>
+              <span className="text-[10px] text-gray-400">
+                Used by AI for hooks, CTAs, edits, score
+              </span>
+            </div>
+            <textarea
+              id="post-context"
+              ref={contextRef}
+              value={currentPost.context}
+              onChange={(e) => {
+                setCurrentPost({ context: e.target.value })
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = `${el.scrollHeight}px`
+              }}
+              placeholder="What's the story behind this post? Why are you writing it, what's the goal, who's it for?"
+              rows={2}
+              className="w-full bg-transparent text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none resize-none leading-relaxed"
+            />
+          </div>
+
           {/* Textarea */}
           <div className="relative">
             <textarea
@@ -380,8 +698,15 @@ export default function Composer() {
               value={currentPost.content}
               onChange={(e) => handleContentChange(e.target.value)}
               onKeyDown={handleKeyDown}
+              onSelect={trackSelection}
+              onKeyUp={trackSelection}
+              onClick={trackSelection}
               placeholder="What's on your mind?"
-              className="w-full min-h-[180px] border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none leading-relaxed"
+              className={`w-full min-h-[180px] border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 resize-none leading-relaxed transition-colors ${
+                proposedEdit !== null
+                  ? 'border-indigo-300 focus:ring-indigo-300 bg-indigo-50/30'
+                  : 'border-gray-200 focus:ring-indigo-400'
+              }`}
               style={{ height: 'auto' }}
             />
             {ghostText && (
@@ -439,61 +764,76 @@ export default function Composer() {
         </div>
 
         {/* ── Right — AI Panel ──────────────────────────────────────────────── */}
-        <div className="w-80 shrink-0 flex flex-col p-5 gap-4 overflow-y-auto bg-gray-50">
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          >
-            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+        {/* Three zones so the score card never pushes the input out of view:
+            top (model select) and bottom (input + score) are shrink-0;
+            the middle area takes whatever's left and scrolls on its own. */}
+        <div className="w-80 shrink-0 flex flex-col bg-gray-50 overflow-hidden">
+          <div className="p-5 pb-3 shrink-0">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            >
+              {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
 
-          {/* Chat messages */}
-          <div className="flex-1 space-y-3 min-h-0">
-            {aiMessages.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-4">Ask AI to write or improve your post</p>
-            )}
-            {aiMessages.map((msg, i) => (
-              <div key={i} className={`text-sm rounded-lg p-3 ${msg.role === 'user' ? 'bg-indigo-50 text-indigo-900' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                <p className="whitespace-pre-wrap">{msg.content}</p>
-                {msg.role === 'assistant' && (
-                  <button onClick={useAIDraft} className="mt-2 text-xs text-indigo-600 hover:underline">Use this draft ↑</button>
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-slim px-5 pb-3 space-y-3">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">AI Editor</p>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Tell the AI what to change. It reads your current post and proposes an edit you can
+                <span className="text-indigo-600 font-medium"> accept </span>
+                or <span className="text-gray-700 font-medium">reject</span> right above your draft.
+                With no draft yet, it'll write a first version from your prompt.
+              </p>
+              <ul className="text-xs text-gray-500 space-y-0.5 mt-1 pl-3 list-disc">
+                <li>"Make the hook punchier"</li>
+                <li>"Shorten by 30% and tighten the CTA"</li>
+                <li>"Rewrite as a single paragraph"</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="shrink-0 border-t border-gray-200 bg-gray-50 p-5 pt-3 space-y-3">
+            {postScore && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2 max-h-56 overflow-y-auto scrollbar-slim">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Post Score</p>
+                <ScoreBar label="Hook"       value={postScore.hookStrength} />
+                <ScoreBar label="Clarity"    value={postScore.clarity} />
+                <ScoreBar label="Structure"  value={postScore.structure} />
+                <ScoreBar label="Engagement" value={postScore.predictedEngagement} />
+                {postScore.suggestions?.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {postScore.suggestions.map((s, i) => (
+                      <p key={i} className="text-xs text-gray-500">💡 {s}</p>
+                    ))}
+                  </div>
                 )}
               </div>
-            ))}
-            {aiLoading && <div className="text-xs text-gray-400 animate-pulse">AI is writing…</div>}
-          </div>
+            )}
 
-          {/* AI input — data-ai-input lets Ctrl+Shift+A focus this from anywhere */}
-          <div className="flex gap-2">
-            <input
-              data-ai-input
-              value={aiInput}
-              onChange={(e) => setAIInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIMessage() } }}
-              placeholder="Ask AI to write or edit…"
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-            />
-            <button onClick={sendAIMessage} disabled={aiLoading} className="btn-gradient text-white px-3 py-1.5 rounded-lg text-sm">→</button>
-          </div>
+            {currentPost.content.trim() && !proposedEdit && !proposedEditLoading && (
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                {selectionLength > 0
+                  ? `Editing ${selectionLength} selected char${selectionLength === 1 ? '' : 's'}`
+                  : 'Editing whole draft'}
+              </p>
+            )}
 
-          {/* Score card */}
-          {postScore && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Post Score</p>
-              <ScoreBar label="Hook"       value={postScore.hookStrength} />
-              <ScoreBar label="Clarity"    value={postScore.clarity} />
-              <ScoreBar label="Structure"  value={postScore.structure} />
-              <ScoreBar label="Engagement" value={postScore.predictedEngagement} />
-              {postScore.suggestions?.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  {postScore.suggestions.map((s, i) => (
-                    <p key={i} className="text-xs text-gray-500">💡 {s}</p>
-                  ))}
-                </div>
-              )}
+            <div className="flex gap-2">
+              <input
+                data-ai-input
+                value={aiInput}
+                onChange={(e) => setAIInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAIRequest() } }}
+                placeholder={currentPost.content.trim() ? 'Tell AI what to change…' : 'Ask AI to write…'}
+                disabled={proposedEditLoading}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-gray-100"
+              />
+              <button onClick={sendAIRequest} disabled={proposedEditLoading || !aiInput.trim()} className="btn-gradient text-white px-3 py-1.5 rounded-lg text-sm disabled:opacity-50">→</button>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -522,7 +862,7 @@ export default function Composer() {
         </div>
 
         {/* data-shortcut lets Ctrl+S trigger save from useKeyboardShortcuts */}
-        <button data-shortcut="save" onClick={saveDraft} disabled={saving}
+        <button data-shortcut="save" onClick={() => saveDraft()} disabled={saving}
           className="border border-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60 ml-auto">
           {saving ? 'Saving…' : 'Save Draft'}
         </button>

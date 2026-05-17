@@ -57,6 +57,15 @@ module.exports = {
     return data;
   },
 
+  async getDrafts() {
+    const { data, error } = await supabase
+      .from('posts').select('*, media_assets(*)')
+      .eq('status', 'draft')
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+
   async getHistory(limit = 50, offset = 0, filters = {}) {
     let query = supabase
       .from('posts').select('*, post_analytics(*)')
@@ -102,6 +111,10 @@ module.exports = {
   },
 
   async remove(id) {
+    // publish_logs.post_id has no ON DELETE CASCADE, so clear logs first.
+    // media_assets, post_analytics, ai_sessions all cascade automatically.
+    const publishLogs = require('./publishLogs');
+    await publishLogs.removeForPost(id);
     const { error } = await supabase.from('posts').delete().eq('id', id);
     if (error) throw error;
   },

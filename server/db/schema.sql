@@ -1,21 +1,27 @@
 -- Postly — Stage 2 Schema
 -- Run these in order in the Supabase SQL Editor.
 
--- Brand voice profiles per platform
+-- Brand voice profiles — many per platform, each with a user-chosen name.
+-- Exactly one row per platform should have is_default = TRUE; the app uses
+-- that row when an AI call doesn't pass an explicit voiceId.
 CREATE TABLE voice_profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   platform TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
   sample_posts TEXT[] NOT NULL,
   analysis JSONB,
   system_prompt TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX voice_profiles_platform_idx ON voice_profiles (platform);
 
 -- All posts: drafts, scheduled, published, failed
 CREATE TABLE posts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   content TEXT NOT NULL,
+  context TEXT,
   platform TEXT[] NOT NULL,
   post_type TEXT DEFAULT 'text',
   status TEXT DEFAULT 'draft',
@@ -113,7 +119,7 @@ CREATE TABLE content_pillars (
 -- Publishing attempt logs
 CREATE TABLE publish_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  post_id UUID REFERENCES posts(id),
+  post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
   platform TEXT NOT NULL,
   status TEXT,
   response JSONB,

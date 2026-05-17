@@ -4,8 +4,6 @@ import toast from 'react-hot-toast'
 import api from '../lib/api'
 import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
-import type { Platform } from '../lib/platformLimits'
-import { PLATFORM_LABELS } from '../lib/platformLimits'
 import PlatformIcon from '../components/ui/PlatformIcon'
 
 interface Pillar { id: string; name: string; color: string; postCount: number }
@@ -166,21 +164,18 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Brand Voice */}
+      {/* Brand Voices */}
       <section className="space-y-3">
-        <h2 className="font-semibold text-gray-800">Brand Voice</h2>
-        <div className="flex flex-col gap-2">
-          {(['linkedin', 'x', 'facebook', 'reddit'] as Platform[]).map((p) => (
-            <button key={p} onClick={() => navigate('/voice')}
-              className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 text-left">
-              <span className="flex items-center gap-2.5 text-sm font-medium text-gray-700">
-                <PlatformIcon platform={p} size={18} />
-                {PLATFORM_LABELS[p]} Voice Profile
-              </span>
-              <span className="text-xs text-indigo-600">Edit →</span>
-            </button>
-          ))}
-        </div>
+        <h2 className="font-semibold text-gray-800">Brand Voices</h2>
+        <p className="text-xs text-gray-500">Name and manage as many voices as you like — each tagged with the platform it was sourced from.</p>
+        <button onClick={() => navigate('/voice')}
+          className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 text-left w-full">
+          <span className="flex items-center gap-2.5 text-sm font-medium text-gray-700">
+            <PlatformIcon platform="linkedin" size={18} />
+            Manage voices
+          </span>
+          <span className="text-xs text-indigo-600">Open →</span>
+        </button>
       </section>
 
       {/* Content Pillars */}
