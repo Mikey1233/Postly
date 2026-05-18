@@ -5,6 +5,7 @@ import api from '../lib/api'
 import { useShallow } from 'zustand/react/shallow'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 interface Pillar { id: string; name: string; color: string; postCount: number }
 
@@ -17,6 +18,7 @@ const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
 
 export default function Settings() {
   const navigate = useNavigate()
+  const confirm  = useConfirm()
   const {
     selectedModel, setSelectedModel, contentPillars, setContentPillars,
     profileName, setProfileName, profileEmail, setProfileEmail,
@@ -33,7 +35,10 @@ export default function Settings() {
     }))
   )
 
-  const [models, setModels]   = useState<{ id: string; name: string; bestFor: string }[]>([])
+  interface ModelRow { id: string; dbId: string; name: string; bestFor: string | null }
+  const [models, setModels]       = useState<ModelRow[]>([])
+  const [newModel, setNewModel]   = useState({ openrouter_id: '', name: '', best_for: '' })
+  const [modelSaving, setModelSaving] = useState(false)
   const [pillars, setPillars] = useState<Pillar[]>(contentPillars)
   const [newPillar, setNewPillar] = useState({ name: '', color: COLORS[0] })
   const [editingPillar, setEditingPillar] = useState<string | null>(null)
@@ -52,6 +57,45 @@ export default function Settings() {
   // setContentPillars is stable from Zustand; intentionally run once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const addModel = async () => {
+    const openrouter_id = newModel.openrouter_id.trim()
+    const name          = newModel.name.trim()
+    if (!openrouter_id) { toast.error('OpenRouter ID required (e.g. anthropic/claude-opus-4-7)'); return }
+    if (!name)          { toast.error('Display name required'); return }
+    setModelSaving(true)
+    try {
+      const { data } = await api.post<ModelRow>('/api/ai/models', {
+        openrouter_id,
+        name,
+        best_for: newModel.best_for.trim() || null,
+      })
+      setModels((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewModel({ openrouter_id: '', name: '', best_for: '' })
+      toast.success('Model added')
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg || 'Failed to add model')
+    } finally { setModelSaving(false) }
+  }
+
+  const removeModel = async (m: ModelRow) => {
+    if (!(await confirm({ title: `Remove ${m.name}?`, body: m.id, destructive: true }))) return
+    const previous = models
+    setModels(models.filter((x) => x.dbId !== m.dbId))
+    // If the deleted model was the selected one, fall back to the first remaining.
+    if (selectedModel === m.id) {
+      const fallback = previous.find((x) => x.dbId !== m.dbId)
+      if (fallback) setSelectedModel(fallback.id)
+    }
+    try {
+      await api.delete(`/api/ai/models/${m.dbId}`)
+      toast.success('Model removed')
+    } catch {
+      toast.error('Failed to remove model')
+      setModels(previous)
+    }
+  }
 
   const saveProfile = async () => {
     if (!nameInput.trim() && !emailInput.trim()) { toast.error('Nothing to save'); return }
@@ -191,16 +235,47 @@ export default function Settings() {
       {/* AI Model */}
       <section className="space-y-3">
         <h2 className="font-semibold text-gray-800">AI Model</h2>
+        <p className="text-xs text-gray-500">Add or remove OpenRouter model IDs. The selected one is used for all AI generation calls.</p>
         <div className="space-y-2">
           {models.map((m) => (
-            <label key={m.id} className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${selectedModel === m.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
-              <input type="radio" name="model" value={m.id} checked={selectedModel === m.id} onChange={() => setSelectedModel(m.id)} className="mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-gray-800">{m.name}</p>
-                <p className="text-xs text-gray-400">{m.bestFor}</p>
-              </div>
-            </label>
+            <div key={m.dbId} className={`flex items-start gap-3 p-3 border rounded-xl transition-colors ${selectedModel === m.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <label className="flex items-start gap-3 flex-1 cursor-pointer min-w-0">
+                <input type="radio" name="model" value={m.id} checked={selectedModel === m.id} onChange={() => setSelectedModel(m.id)} className="mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{m.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{m.bestFor || m.id}</p>
+                  <p className="text-[10px] text-gray-400 font-mono truncate">{m.id}</p>
+                </div>
+              </label>
+              <button onClick={() => removeModel(m)} title="Remove model"
+                className="text-xs text-gray-400 hover:text-red-500 shrink-0 px-1">🗑</button>
+            </div>
           ))}
+        </div>
+
+        {/* Add new model */}
+        <div className="border border-dashed border-gray-300 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-medium text-gray-600">Add a model</p>
+          <input value={newModel.openrouter_id}
+            onChange={(e) => setNewModel((n) => ({ ...n, openrouter_id: e.target.value }))}
+            placeholder="OpenRouter ID (e.g. anthropic/claude-opus-4-7)"
+            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <input value={newModel.name}
+            onChange={(e) => setNewModel((n) => ({ ...n, name: e.target.value }))}
+            placeholder="Display name (e.g. Claude Opus 4.7)"
+            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <input value={newModel.best_for}
+            onChange={(e) => setNewModel((n) => ({ ...n, best_for: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === 'Enter') addModel() }}
+            placeholder="Best for… (optional)"
+            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <button onClick={addModel} disabled={modelSaving}
+            className="btn-gradient text-white px-3 py-1.5 rounded-lg text-sm disabled:opacity-60">
+            {modelSaving ? 'Adding…' : '+ Add model'}
+          </button>
         </div>
       </section>
 

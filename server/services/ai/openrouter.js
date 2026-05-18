@@ -6,17 +6,8 @@ const client = new OpenAI({
   defaultHeaders: { 'HTTP-Referer': 'https://postly.app', 'X-Title': 'Postly' },
 });
 
-// Text / multimodal models for AI writing features
-const MODELS = [
-  { id: 'anthropic/claude-sonnet-4-6',               name: 'Claude Sonnet 4.6',      contextK: 200,  bestFor: 'Creative writing, structured output (recommended)' },
-  { id: 'anthropic/claude-sonnet-4-5',               name: 'Claude Sonnet 4.5',      contextK: 200,  bestFor: 'Long-form posts, voice analysis' },
-  { id: 'google/gemini-2.5-pro-preview',             name: 'Gemini 2.5 Pro',         contextK: 1000, bestFor: 'Deep research, large voice analysis sets' },
-  { id: 'google/gemini-2.0-flash-001',               name: 'Gemini 2.0 Flash',       contextK: 1000, bestFor: 'Fast generation, creative hooks' },
-  { id: 'openai/gpt-4o',                             name: 'GPT-4o',                 contextK: 128,  bestFor: 'General writing, image captions' },
-  { id: 'openai/gpt-4o-mini',                        name: 'GPT-4o Mini',            contextK: 128,  bestFor: 'Autocomplete (low latency)' },
-  { id: 'google/gemini-pro-1.5',                     name: 'Gemini Pro 1.5',         contextK: 1000, bestFor: 'Voice analysis with many sample posts' },
-  { id: 'meta-llama/llama-3.1-70b',                  name: 'Llama 3.1 70B',          contextK: 128,  bestFor: 'Alternative general-purpose' },
-];
+// Model list now lives in the ai_models DB table and is managed from the
+// Settings page. See db/aiModels.js and routes/ai.js (/api/ai/models).
 
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-5';
 
@@ -65,4 +56,4 @@ async function visionComplete({ imageUrl, prompt, model = 'openai/gpt-4o' }) {
   return result.choices[0]?.message?.content || '';
 }
 
-module.exports = { client, MODELS, DEFAULT_MODEL, chat, streamToResponse, complete, visionComplete };
+module.exports = { client, DEFAULT_MODEL, chat, streamToResponse, complete, visionComplete };

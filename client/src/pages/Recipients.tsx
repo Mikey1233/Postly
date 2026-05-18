@@ -5,6 +5,7 @@ import axios from 'axios'
 import api from '../lib/api'
 import useAppStore from '../store/useAppStore'
 import type { EmailRecipient } from '../store/useAppStore'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 interface RecipientRow {
   id: string
@@ -36,6 +37,7 @@ interface FormState { name: string; email: string; groupTag: string; notes: stri
 const EMPTY_FORM: FormState = { name: '', email: '', groupTag: '', notes: '' }
 
 export default function Recipients() {
+  const confirm = useConfirm()
   const { emailRecipients, setEmailRecipients, upsertEmailRecipient, removeEmailRecipient } = useAppStore(
     useShallow((s) => ({
       emailRecipients: s.emailRecipients,
@@ -94,7 +96,7 @@ export default function Recipients() {
   }
 
   const remove = async (r: EmailRecipient) => {
-    if (!confirm(`Remove ${r.name} (${r.email})?`)) return
+    if (!(await confirm({ title: `Remove ${r.name}?`, body: r.email, destructive: true }))) return
     try {
       await api.delete(`/api/recipients/${r.id}`)
       removeEmailRecipient(r.id)

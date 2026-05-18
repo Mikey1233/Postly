@@ -7,6 +7,7 @@ import type { VoiceProfile } from '../store/useAppStore'
 import { PLATFORM_LABELS, PLATFORM_COLORS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 const PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
 
@@ -42,6 +43,7 @@ function rowToProfile(row: ServerVoiceRow): VoiceProfile {
 }
 
 export default function VoiceSetup() {
+  const confirm = useConfirm()
   const { voiceProfiles, upsertVoiceProfile, removeVoiceProfile, selectedModel } = useAppStore(
     useShallow((s) => ({
       voiceProfiles:      s.voiceProfiles,
@@ -143,7 +145,7 @@ export default function VoiceSetup() {
   }
 
   const remove = async (v: VoiceProfile) => {
-    if (!confirm(`Delete "${v.name}"? Posts linked to this voice keep their content but lose the voice tag.`)) return
+    if (!(await confirm({ title: `Delete "${v.name}"?`, body: 'Posts linked to this voice keep their content but lose the voice tag.', destructive: true }))) return
     try {
       await api.delete(`/api/voice/${v.id}`)
       removeVoiceProfile(v.id)

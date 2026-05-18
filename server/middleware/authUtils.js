@@ -6,9 +6,20 @@ const COOKIE_NAME   = 'postly_session';
 const SESSION_HOURS = parseInt(process.env.SESSION_DURATION_HOURS || '12', 10);
 const SESSION_MS    = SESSION_HOURS * 60 * 60 * 1000;
 
-// In-memory session store: token → expiry timestamp (ms).
-// Sessions are intentionally lost on restart — re-login is the recovery path.
-const sessions = new Map();
+// Sessions are stateless HMAC-signed tokens. The token carries its own expiry
+// and verifies against a key derived from ENCRYPTION_KEY, so server restarts
+// (deploys, `node --watch` reloads) no longer invalidate active sessions.
+// Logout is enforced client-side by clearing the cookie; we accept that a
+// stolen token remains valid until its `exp` for this single-user tool.
+function sessionKey() {
+  const base = process.env.ENCRYPTION_KEY;
+  if (!base) throw new Error('ENCRYPTION_KEY env var is required for session signing');
+  return crypto.createHash('sha256').update(`postly-session:${base}`).digest();
+}
+
+function sign(payloadB64) {
+  return crypto.createHmac('sha256', sessionKey()).update(payloadB64).digest('base64url');
+}
 
 // ── Credential helpers ────────────────────────────────────────────────────────
 
@@ -41,26 +52,32 @@ async function setCredentials(email, password) {
 // ── Session helpers ───────────────────────────────────────────────────────────
 
 function createSession() {
-  const token     = crypto.randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + SESSION_MS;
-  sessions.set(token, expiresAt);
-  return token;
+  const payload    = { exp: Date.now() + SESSION_MS, nonce: crypto.randomBytes(8).toString('hex') };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${payloadB64}.${sign(payloadB64)}`;
 }
 
 function verifySession(token) {
-  if (!token) return false;
-  const expiresAt = sessions.get(token);
-  if (!expiresAt) return false;
-  if (Date.now() > expiresAt) {
-    sessions.delete(token);
-    return false;
-  }
-  return true;
+  if (!token || typeof token !== 'string') return false;
+  const dot = token.indexOf('.');
+  if (dot === -1) return false;
+  const payloadB64 = token.slice(0, dot);
+  const sig        = token.slice(dot + 1);
+  const expected   = sign(payloadB64);
+  // Constant-time compare to avoid timing attacks on the signature.
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  try {
+    const { exp } = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    return typeof exp === 'number' && Date.now() < exp;
+  } catch { return false; }
 }
 
-function destroySession(token) {
-  if (token) sessions.delete(token);
-}
+// Stateless tokens can't be revoked server-side without a deny-list. Logout
+// works because clearSessionCookie removes the cookie from the browser — the
+// token simply expires on schedule if the cookie is somehow retained.
+function destroySession(_token) { /* no-op — see comment above */ }
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 

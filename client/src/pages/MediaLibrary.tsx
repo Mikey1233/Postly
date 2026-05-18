@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import api from '../lib/api'
 import { formatDate } from '../lib/utils'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 type MediaType = 'image' | 'video' | 'gif'
 interface Asset {
@@ -59,6 +60,7 @@ function formatBytes(bytes: number) {
 }
 
 export default function MediaLibrary() {
+  const confirm = useConfirm()
   const [assets, setAssets]   = useState<Asset[]>([])
   const [filter, setFilter]   = useState('')
   const [selected, setSelected] = useState<Asset | null>(null)
@@ -78,7 +80,7 @@ export default function MediaLibrary() {
   const filtered = filter ? assets.filter((a) => a.type === filter) : assets
 
   const deleteAsset = async (id: string) => {
-    if (!confirm('Delete this file permanently?')) return
+    if (!(await confirm({ title: 'Delete file?', body: 'This permanently removes the file from storage.', destructive: true }))) return
     try {
       await api.delete(`/api/media/${id}`)
       setAssets((prev) => prev.filter((a) => a.id !== id))

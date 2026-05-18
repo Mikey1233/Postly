@@ -1,7 +1,28 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import api from '../lib/api'
 import useAppStore from '../store/useAppStore'
+
+// Render's free tier sleeps after inactivity; the first request after a cold
+// start often returns 502/503 from the proxy before the Node app is ready.
+// Retry transient failures with backoff so the user doesn't have to manually
+// re-submit. Real auth failures (400/401) are returned immediately.
+async function postLoginWithRetry(email: string, password: string) {
+  const delays = [0, 1500, 3000]
+  let lastErr: unknown
+  for (const delay of delays) {
+    if (delay) await new Promise((r) => setTimeout(r, delay))
+    try {
+      return await api.post('/api/auth/login', { email, password })
+    } catch (err) {
+      lastErr = err
+      const status = axios.isAxiosError(err) ? err.response?.status : null
+      if (status && status >= 400 && status < 500) throw err
+    }
+  }
+  throw lastErr
+}
 
 export default function Login() {
   const [email, setEmail]       = useState('')
@@ -17,11 +38,19 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await api.post('/api/auth/login', { email, password })
+      await postLoginWithRetry(email, password)
       setAuth({ authenticated: true, setupDone: true })
       navigate('/', { replace: true })
-    } catch {
-      setError('Incorrect email or password')
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status
+        const serverMsg = (err.response?.data as { error?: string } | undefined)?.error
+        if (status === 401 || status === 400) setError(serverMsg || 'Incorrect email or password')
+        else if (!err.response) setError('Could not reach the server. Try again.')
+        else setError(serverMsg || `Login failed (${status}).`)
+      } else {
+        setError('Login failed.')
+      }
     } finally {
       setLoading(false)
     }

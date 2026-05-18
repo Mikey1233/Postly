@@ -6,6 +6,7 @@ import { PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import useAppStore from '../store/useAppStore'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 // Connectable platforms. LinkedIn + X publish to a public feed; Gmail
 // "publishes" by sending the post as an email to a chosen list of recipients
@@ -23,6 +24,7 @@ interface PlatformStatus {
 }
 
 export default function Platforms() {
+  const confirm = useConfirm()
   const [searchParams] = useSearchParams()
   const setPlatformConnections = useAppStore((s) => s.setPlatformConnections)
 
@@ -75,7 +77,7 @@ export default function Platforms() {
   }
 
   const disconnect = async (platform: Platform) => {
-    if (!confirm(`Disconnect ${PLATFORM_LABELS[platform]}?`)) return
+    if (!(await confirm({ title: `Disconnect ${PLATFORM_LABELS[platform]}?`, destructive: true, confirmLabel: 'Disconnect' }))) return
     try {
       await api.delete(`/api/platforms/${platform}`)
       toast.success('Disconnected')
@@ -86,7 +88,7 @@ export default function Platforms() {
   }
 
   const removeCredentials = async (platform: Platform) => {
-    if (!confirm(`Remove credentials for ${PLATFORM_LABELS[platform]}? This will also disconnect it.`)) return
+    if (!(await confirm({ title: `Remove ${PLATFORM_LABELS[platform]} credentials?`, body: 'This will also disconnect the account.', destructive: true }))) return
     try {
       await api.delete(`/api/platforms/${platform}/credentials`)
       toast.success('Credentials removed')

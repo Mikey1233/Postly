@@ -1,14 +1,14 @@
 import axios from 'axios'
 import useAppStore from '../store/useAppStore'
 
-export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// Both dev and prod use relative /api URLs so the session cookie is always
+// first-party (browsers block/partition third-party cookies, which would log
+// the user out on every reload). Dev: Vite proxy → localhost:3001. Prod:
+// Vercel rewrite (see vercel.json) → the Render backend.
+export const BASE_URL = ''
 
-// In development all requests go through the Vite proxy (/api/* → localhost:3001)
-// so the session cookie is always same-origin. In production VITE_API_URL is the
-// Railway/Render URL; withCredentials lets the browser send the httpOnly cookie
-// cross-origin (works when the server returns Access-Control-Allow-Credentials).
 const api = axios.create({
-  baseURL:         import.meta.env.DEV ? '' : BASE_URL,
+  baseURL:         '',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })

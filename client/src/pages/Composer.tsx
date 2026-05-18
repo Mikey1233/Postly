@@ -10,6 +10,7 @@ import useAppStore from '../store/useAppStore'
 import type { Tone, MediaAsset } from '../store/useAppStore'
 import MediaUploadZone from '../components/media/MediaUploadZone'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 interface DbMediaRow {
   id: string
@@ -84,6 +85,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 
 export default function Composer() {
   const navigate = useNavigate()
+  const confirm  = useConfirm()
   const [searchParams] = useSearchParams()
   const draftIdParam = searchParams.get('id')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -495,7 +497,7 @@ export default function Composer() {
   const generateFromYoutube = async () => {
     const url = youtubeUrl.trim()
     if (!url) { toast.error('Paste a YouTube URL first'); return }
-    if (currentPost.content.trim() && !confirm('Replace your current draft with a post generated from this video?')) return
+    if (currentPost.content.trim() && !(await confirm({ title: 'Replace current draft?', body: 'A new post will be generated from this video.', confirmLabel: 'Replace', destructive: true }))) return
 
     setYoutubeLoading(true)
 
@@ -652,7 +654,7 @@ export default function Composer() {
     if (blockedByGmailGate({ requireRecipients: true })) return
     const targetSummary = currentPost.platforms.map((p) => PLATFORM_LABELS[p]).join(' + ')
     const gmailSuffix = gmailSelected ? ` (Gmail → ${currentPost.recipientIds.length} recipient${currentPost.recipientIds.length === 1 ? '' : 's'})` : ''
-    if (!confirm(`Post now to ${targetSummary}${gmailSuffix}?`)) return
+    if (!(await confirm({ title: 'Post now?', body: `Publishing to ${targetSummary}${gmailSuffix}.`, confirmLabel: 'Post' }))) return
     const id = currentPost.id || await saveDraft({ silent: true })
     if (!id) return
     setPosting(true)

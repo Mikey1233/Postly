@@ -1,13 +1,6 @@
 {
-  "build": {
-    "env": {
-      "VITE_API_URL": "https://postly-pusg.onrender.com"
-    }
-  },
   "rewrites": [
-    {
-      "source": "/((?!api/.*).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/:path*", "destination": "https://postly-pusg.onrender.com/api/:path*" },
+    { "source": "/((?!api/.*).*)", "destination": "/index.html" }
   ]
 }

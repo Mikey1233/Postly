@@ -12,6 +12,9 @@ const platformGroups = require('./platformGroups');
 const contentPillars = require('./contentPillars');
 const publishLogs   = require('./publishLogs');
 const emailRecipients = require('./emailRecipients');
+const feedSources   = require('./feedSources');
+const feedItems     = require('./feedItems');
+const aiModels      = require('./aiModels');
 
 module.exports = {
   posts,
@@ -25,4 +28,7 @@ module.exports = {
   contentPillars,
   publishLogs,
   emailRecipients,
+  feedSources,
+  feedItems,
+  aiModels,
 };

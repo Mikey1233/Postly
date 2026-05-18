@@ -6,6 +6,7 @@ import { formatDate } from '../lib/utils'
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 interface DraftRow {
   id: string
@@ -20,6 +21,7 @@ interface DraftRow {
 
 export default function Drafts() {
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [drafts, setDrafts] = useState<DraftRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -34,7 +36,7 @@ export default function Drafts() {
   const open = (id: string) => navigate(`/compose?id=${id}`)
 
   const remove = async (id: string) => {
-    if (!confirm('Delete this draft?')) return
+    if (!(await confirm({ title: 'Delete draft?', destructive: true }))) return
     const prev = drafts
     setDrafts((d) => d.filter((r) => r.id !== id))
     try {

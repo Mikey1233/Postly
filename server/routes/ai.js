@@ -458,7 +458,56 @@ Return ONLY JSON: { "pillarId": "...", "pillarName": "..." }`,
   } catch (err) { next(err); }
 });
 
+// ── Models CRUD ──────────────────────────────────────────────────────────────
+// The list of OpenRouter model IDs is stored in the ai_models table so the
+// owner can add/remove models from the Settings page without redeploying.
+// The frontend `bestFor` / `contextK` field names are camelCase, so we map
+// from the snake_case DB columns on the way out.
+
+function rowToModel(row) {
+  return {
+    id:        row.openrouter_id,   // legacy: client treats `id` as OpenRouter ID
+    dbId:      row.id,              // surrogate for delete/update calls
+    name:      row.name,
+    bestFor:   row.best_for,
+    contextK:  row.context_k,
+  };
+}
+
 // GET /api/ai/models
-router.get('/models', (_req, res) => res.json({ models: openrouter.MODELS }));
+router.get('/models', async (_req, res, next) => {
+  try {
+    const rows = await db.aiModels.getAll();
+    res.json({ models: rows.map(rowToModel) });
+  } catch (err) { next(err); }
+});
+
+// POST /api/ai/models  { openrouter_id, name, best_for?, context_k? }
+router.post('/models', async (req, res, next) => {
+  try {
+    const openrouter_id = (req.body.openrouter_id || '').trim();
+    const name          = (req.body.name || '').trim();
+    if (!openrouter_id) return res.status(400).json({ error: 'openrouter_id required' });
+    if (!name)          return res.status(400).json({ error: 'name required' });
+    const row = await db.aiModels.create({
+      openrouter_id,
+      name,
+      best_for:  (req.body.best_for || '').trim() || null,
+      context_k: Number.isFinite(+req.body.context_k) ? +req.body.context_k : null,
+    });
+    res.status(201).json(rowToModel(row));
+  } catch (err) {
+    if (err?.code === '23505') return res.status(409).json({ error: 'A model with that OpenRouter ID already exists' });
+    next(err);
+  }
+});
+
+// DELETE /api/ai/models/:dbId
+router.delete('/models/:dbId', async (req, res, next) => {
+  try {
+    await db.aiModels.remove(req.params.dbId);
+    res.json({ deleted: req.params.dbId });
+  } catch (err) { next(err); }
+});
 
 module.exports = router;

@@ -27,6 +27,7 @@ app.use('/api/schedule',   requireAuth, require('./routes/schedule'));
 app.use('/api/youtube',    requireAuth, require('./routes/youtube'));
 app.use('/api/recipients', requireAuth, require('./routes/emailRecipients'));
 app.use('/api/pillars',    requireAuth, require('./routes/contentPillars'));
+app.use('/api/feeds',      requireAuth, require('./routes/feeds'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

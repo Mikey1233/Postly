@@ -1,10 +1,13 @@
 const cron = require('node-cron');
 const db   = require('../../db');
 const { publishPost } = require('../publisher');
+const { pollAllSources } = require('../feeds/poller');
 
 let running = false;
 let lastTickAt = null;
 let lastTickCount = 0;
+let feedsRunning = false;
+let lastFeedTickAt = null;
 const inFlight = new Set();
 
 async function tick() {
@@ -38,13 +41,30 @@ async function tick() {
   }
 }
 
+async function feedsTick() {
+  if (feedsRunning) return;
+  feedsRunning = true;
+  try {
+    await pollAllSources();
+    lastFeedTickAt = new Date().toISOString();
+  } catch (err) {
+    console.error('[scheduler] feeds tick error:', err.message);
+  } finally {
+    feedsRunning = false;
+  }
+}
+
 function startScheduler() {
   cron.schedule('* * * * *', tick);
-  console.log('[scheduler] started — checking every minute');
+  cron.schedule('*/20 * * * *', feedsTick);
+  console.log('[scheduler] started — posts every minute, feeds every 20 min');
+  // Kick off an initial feed poll a few seconds after boot so the dashboard
+  // isn't empty on a cold start. Fire-and-forget; errors are logged.
+  setTimeout(() => { feedsTick().catch(() => {}); }, 5_000);
 }
 
 function getStatus() {
-  return { lastTickAt, lastTickCount, inFlight: [...inFlight] };
+  return { lastTickAt, lastTickCount, lastFeedTickAt, inFlight: [...inFlight] };
 }
 
-module.exports = { startScheduler, tick, getStatus };
+module.exports = { startScheduler, tick, feedsTick, getStatus };

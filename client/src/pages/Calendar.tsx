@@ -9,6 +9,7 @@ import api from '../lib/api'
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
 import PlatformIcon from '../components/ui/PlatformIcon'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 interface MediaAssetRow {
   id: string
@@ -37,6 +38,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function Calendar() {
   const navigate = useNavigate()
+  const confirm  = useConfirm()
   const [month, setMonth]       = useState(new Date())
   const [posts, setPosts]       = useState<Post[]>([])
   const [selected, setSelected] = useState<Post | null>(null)
@@ -163,7 +165,7 @@ export default function Calendar() {
                 >Edit</button>
                 <button
                   onClick={async () => {
-                    if (!confirm('Delete this post?')) return
+                    if (!(await confirm({ title: 'Delete post?', destructive: true }))) return
                     await api.delete(`/api/posts/${selected.id}`)
                     setPosts((prev) => prev.filter((p) => p.id !== selected.id))
                     setSelected(null)

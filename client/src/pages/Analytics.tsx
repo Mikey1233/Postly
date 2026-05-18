@@ -4,6 +4,7 @@ import api from '../lib/api'
 import { formatDate } from '../lib/utils'
 import { PLATFORM_COLORS, PLATFORM_LABELS } from '../lib/platformLimits'
 import type { Platform } from '../lib/platformLimits'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 const ALL_PLATFORMS: Platform[] = ['linkedin', 'x', 'facebook', 'reddit']
 const POST_TYPES = ['text', 'image', 'video'] as const
@@ -29,6 +30,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function Analytics() {
+  const confirm = useConfirm()
   const [posts, setPosts]       = useState<PostRow[]>([])
   const [loading, setLoading]   = useState(true)
   const [sortBy, setSortBy]     = useState<'impressions' | 'likes' | 'date'>('date')
@@ -55,7 +57,7 @@ export default function Analytics() {
   }, [search, filterPlatform, filterType])
 
   const deletePost = async (id: string) => {
-    if (!confirm('Delete this post and all its analytics? This cannot be undone.')) return
+    if (!(await confirm({ title: 'Delete post?', body: 'This deletes the post and all its analytics. This cannot be undone.', destructive: true }))) return
     const prev = posts
     setPosts((p) => p.filter((row) => row.id !== id))
     try {
